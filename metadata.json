@@ -1,0 +1,6 @@
+{
+  "name": "EduGrade Evaluation Hub",
+  "description": "An interactive assessment platform for Computer Science teachers to manage marks, convert them to 1-4 standard ratings, generate custom evaluation forms, write AI comments, and download class ledger Excel sheets.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
