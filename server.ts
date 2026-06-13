@@ -34,17 +34,17 @@ async function startServer() {
         let improvementText = "";
 
         if (total >= 85) {
-          strengthText = `${name || "The student"} demonstrates outstanding computational logical reasoning, a stellar work ethic in programming exercises, and active participation in class discussions.`;
-          improvementText = `To extend skills further, continuing to explore independent coding projects and assisting peers with logic problems is encouraged.`;
+          strengthText = `${name || "The student"} demonstrates wonderful progress in all parts of computer class. They stay very focused during lessons and show excellent creativity in practical activities.`;
+          improvementText = `To continue growing, they are encouraged to explore advanced computer activities or help friends who are still learning. Keep up the brilliant effort!`;
         } else if (total >= 70) {
-          strengthText = `${name || "The student"} consistently completes computer lab exercises on time, has a good grasp of core theory elements, and practices good posture/safety standards.`;
-          improvementText = `Should work on double-checking theoretical MCQ worksheets to convert very good performance into absolute excellence.`;
+          strengthText = `${name || "The student"} consistently completes their computer lab exercises on time and has a solid understanding of theoretical topics. They participate nicely in class.`;
+          improvementText = `Spending a tiny bit more time double-checking their work before submitting will help them reach even higher grades. They should feel proud of their effort!`;
         } else if (total >= 50) {
-          strengthText = `${name || "The student"} displays a satisfactory foundation in computational terminology and can follow structured step-by-step instructions in the computer lab.`;
-          improvementText = `Would benefit from extra typing drill practices and reviewing homework materials to build up keyboard speed and independent confidence.`;
+          strengthText = `${name || "The student"} demonstrates a satisfactory understanding of basic computer ideas and coordinates well during practical computer lab time.`;
+          improvementText = `Recommended to practice comfortable keyboard typing drills at home and focus more when instructions are given. We are excited to see them grow!`;
         } else {
-          strengthText = `${name || "The student"} is friendly and shows great potential when given 1-on-1 guided instructions on basic computer interactions.`;
-          improvementText = `Requires regular practice with lab software structures, and dedicated typing support is recommended to catch up with class assignments.`;
+          strengthText = `${name || "The student"} comes to the computer room with a happy, friendly smile. They follow class rules well and always try their best when given guided steps.`;
+          improvementText = `They will benefit from practicing simple typing drills at home and paying closer attention when the teacher explains tasks. With steady practice, they will surely improve!`;
         }
 
         return res.json({
@@ -68,32 +68,40 @@ async function startServer() {
         .join(", ");
 
       const prompt = `Student Name: ${name || "Sudeep"}
-Grade Level: ${grade || "4"}
-Scores Log: ${scoresText} (Participation out of 10, Homework out of 10, MCQ out of 30, Project out of 30, Lab out of 20).
+Grade Level: ${grade || "3"}
+Scores: ${scoresText} (Class Participation and Attentiveness out of 10, Homework and Independent Practice out of 10, Computer Concepts and Assessment out of 30, Creative Work and Projects out of 30, Practical Lab Performance out of 20).
 
-Task: Generate realistic, highly customized, and professional Computer Science report card remarks for parent view.
-Do not list numerical scores in your narrative. Use encouraging but strictly objective, pedagogical, and helpful terminology (e.g., computational thinking, typing mastery, active lab collaboration, concept retention, program debugging).
+Task: Generate an encouraging and professional Computer Studies report card remark for a Grade 3 student.
+Instructions:
+- Use professional, warm, and parent-friendly language.
+- Keep the English clear and natural—neither too simple nor too advanced.
+- Do not list numerical scores or grades anywhere. Instead, explain the overall performance.
+- Mention the student's strengths based on their highest-performing score areas.
+- Mention one or two areas for improvement based on their lower-performing score areas.
+- Maintain a positive, supportive, and encouraging tone throughout.
+- Avoid repetitive phrases and overly formal educational jargon.
+- Provide a constructive suggestion or encouraging statement at the end of each field.
 
-Provide your output as a parsed JSON containing two fields:
-1. "strengths": 1-2 positive, specific sentences starting with the student's name highlighting their computer science capability.
-2. "areasOfImprovement": 1-2 objective, constructive sentences highlighting concrete keyboard, computational practice, or focus habits they can train on.`;
+Provide your output as parsed JSON with exactly these two keys:
+1. "strengths": 1-2 positive, specific sentences starting with the student's name, highlighting their computer studies capabilities and overall positive highlights based on their top scores.
+2. "areasOfImprovement": 1-2 constructive, helpful sentences focusing on concrete things they can practice or improve on, ending with a warm and positive encouragement statement.`;
 
       const response = await ai.models.generateContent({
         model: "gemini-3.5-flash",
         contents: prompt,
         config: {
-          systemInstruction: "You are an experienced, elite K-12 Computer Science teacher writing child-focused, supportive, objective assessment narratives to parents.",
+          systemInstruction: "You are an experienced Grade 3 Computer Studies teacher writing warm, parents-friendly, and constructive student feedback reports. Your comments are natural, clear, and highly personalized based on the student's actual performance patterns.",
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             properties: {
               strengths: {
                 type: Type.STRING,
-                description: "Positive observations about coding, theoretical concepts, or computer laboratory skills.",
+                description: "Warm, parent-friendly sentences highlighting the student's performance and computing strengths.",
               },
               areasOfImprovement: {
                 type: Type.STRING,
-                description: "Constructive steps for logical improvements, study habits, keyboard drills, or homework submission.",
+                description: "Encouraging, constructive suggestions for one or two areas of growth based on lower scores.",
               }
             },
             required: ["strengths", "areasOfImprovement"]

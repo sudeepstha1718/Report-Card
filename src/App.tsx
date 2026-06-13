@@ -21,7 +21,11 @@ import {
   School,
   Calendar,
   ExternalLink,
-  AlertTriangle
+  AlertTriangle,
+  Lock,
+  ShieldAlert,
+  ArrowRight,
+  CornerDownLeft
 } from "lucide-react";
 import { StudentRecord, COMPONENT_DETAILS, ComponentKey, ScoreComponents } from "./types";
 import { 
@@ -31,140 +35,238 @@ import {
   percentageToLetterGrade, 
   calculateTotalScore, 
   generateDefaultRemarks, 
+  generateDefaultStrengthsAndImprovements,
   exportToClassroomExcel 
 } from "./lib/gradeUtils";
 
 // @ts-ignore
 import html2pdf from "html2pdf.js";
 import { PrintPreviewPage } from "./components/PrintPreviewPage";
-
-// Mock student template data for instant load and testing
-const INITIAL_STUDENTS: StudentRecord[] = [
-  {
-    id: "CS-401",
-    name: "Sudeep Shrestha",
-    grade: "Class 4A",
-    phase: "Phase 1",
-    rollNo: "1",
-    date: "2026-06-11",
-    evaluator: "Mr. Sudeep Shrestha",
-    scores: {
-      participation: 9,
-      homework: 8,
-      mcq: 24,
-      project: 28,
-      lab: 18
-    },
-    afterSupport: {
-      participation: "Excellent",
-      homework: "Very Good",
-      mcq: "Satisfactory",
-      project: "Very Good",
-      lab: "Very Good"
-    },
-    remarks: {
-      participation: "Highly active participant; regularly volunteers for hardware setup demonstrations and answers computer security questions.",
-      homework: "Consistently submits well-organized worksheets on time; showcases perfect files and directories categorization.",
-      mcq: "Demonstrates strong conceptual retention about input/output devices and safe online habits during quizzes.",
-      project: "Created an outstanding game build in Scratch featuring advanced sound effects and custom key-event variables.",
-      lab: "Possesses rapid typing speed (30+ WPM) and navigates files structures easily."
-    },
-    strengths: "Sudeep exhibits outstanding algorithmic logic in Scratch creation, is highly skilled at handling OS shortcuts, and assists classmates with lab tasks.",
-    areasOfImprovement: "Can practice extra binary conversion drills to ensure high scores on theoretical papers, and consider exploring nested control loops."
-  },
-  {
-    id: "CS-402",
-    name: "Prerna Shakya",
-    grade: "Class 4A",
-    phase: "Phase 1",
-    rollNo: "2",
-    date: "2026-06-11",
-    evaluator: "Mr. Sudeep Shrestha",
-    scores: {
-      participation: 8,
-      homework: 7,
-      mcq: 20,
-      project: 23,
-      lab: 15
-    },
-    afterSupport: {
-      participation: "Very Good",
-      homework: "Very Good",
-      mcq: "Very Good",
-      project: "Very Good",
-      lab: "Very Good"
-    },
-    remarks: {
-      participation: "Eager learner; maintains good focus in class and contributes productively to team layout design.",
-      homework: "Submissions are generally complete and show a effort to practice outside of class hours.",
-      mcq: "Understands fundamental hardware components, but sometimes mixes up system software vs application software.",
-      project: "Designed a clean, storytelling-themed animation project with beautiful custom backdrop vector graphics.",
-      lab: "Shows confidence when saving and storing files in cloud folders."
-    },
-    strengths: "Prerna has strong creative instincts in program layout design, demonstrates disciplined attention to class guidelines, and completes logical workflows.",
-    areasOfImprovement: "To advance further, Prerna should practice keyboard touch-typing drills regularly to increase overall word-per-minute speed and accuracy."
-  },
-  {
-    id: "CS-403",
-    name: "Aayush Thapa",
-    grade: "Class 4A",
-    phase: "Phase 1",
-    rollNo: "3",
-    date: "2026-06-11",
-    evaluator: "Mr. Sudeep Shrestha",
-    scores: {
-      participation: 5,
-      homework: 4,
-      mcq: 13,
-      project: 14,
-      lab: 9
-    },
-    afterSupport: {
-      participation: "Satisfactory",
-      homework: "Needs Improvement",
-      mcq: "Needs Improvement",
-      project: "Satisfactory",
-      lab: "Needs Improvement"
-    },
-    remarks: {
-      participation: "Requires frequent prompts during lecture, as she gets distracted by online browser software.",
-      homework: "Needs reminders to write up homework worksheets; completed two out of five tasks this season.",
-      mcq: "Finds computing terms like algorithms and RAM slightly confusing; needs review worksheets.",
-      project: "A simple project with essential commands. Good effort, but logic flow needed close guidance to compile.",
-      lab: "Needs help double-clicking files and organizing custom folder paths."
-    },
-    strengths: "Aayush has an active imagination and shows good enthusiasm during practical, game-based learning hours.",
-    areasOfImprovement: "Requires continuous practice on keyboard keys layout, completing assignment printouts, and utilizing standard directories properly."
-  }
-];
+import { SchoolLogo } from "./components/SchoolLogo";
+import { BrandingSettings } from "./components/BrandingSettings";
+import { CLASS_3_STUDENTS } from "./class3Data";
 
 export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    try {
+      if (typeof window !== "undefined") {
+        return sessionStorage.getItem("edugrade_authenticated") === "true";
+      }
+    } catch (e) {}
+    return false;
+  });
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState(false);
+  const [hasUnsaved, setHasUnsaved] = useState(false);
+
   const [students, setStudents] = useState<StudentRecord[]>(() => {
-    const saved = localStorage.getItem("edugrade_students");
-    return saved ? JSON.parse(saved) : INITIAL_STUDENTS;
+    // 1. Try opener's localStorage (highly likely since spawned by window.open)
+    try {
+      if (typeof window !== "undefined" && window.opener && !window.opener.closed) {
+        const openerSaved = window.opener.localStorage.getItem("edugrade_students");
+        if (openerSaved) {
+          const parsed = JSON.parse(openerSaved);
+          // If stored records lack Class 3A or Class 3B, or only contain a single phase (53 students), force update to complete list
+          const hasNew = parsed.some((s: any) => s.grade === "Class 3A" || s.grade === "Class 3B");
+          const hasAllPhases = parsed.length >= 150;
+          if (!hasNew || !hasAllPhases) {
+            return CLASS_3_STUDENTS;
+          }
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn("Could not read from window.opener localStorage", e);
+    }
+    // 2. Try own localStorage
+    try {
+      const saved = localStorage.getItem("edugrade_students");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // If stored records lack Class 3A or Class 3B, or only contain a single phase, force update
+        const hasNew = parsed.some((s: any) => s.grade === "Class 3A" || s.grade === "Class 3B");
+        const hasAllPhases = parsed.length >= 150;
+        if (!hasNew || !hasAllPhases) {
+          localStorage.setItem("edugrade_students", JSON.stringify(CLASS_3_STUDENTS));
+          return CLASS_3_STUDENTS;
+        }
+        return parsed;
+      }
+    } catch (e) {
+      console.warn("Could not read from own localStorage", e);
+    }
+    // 3. Fallback
+    return CLASS_3_STUDENTS;
   });
 
-  const [selectedStudentId, setSelectedStudentId] = useState<string>(
-    students.length > 0 ? students[0].id : ""
-  );
+  const [selectedStudentId, setSelectedStudentId] = useState<string>(() => {
+    return students.length > 0 ? students[0].id : "";
+  });
 
-  const ALLOWED_CLASSES = ["Class 3A", "Class 3B", "Class 4A", "Class 4B", "Class 5A", "Class 5B"];
+  // Keep selectedStudentId in sync with students when list loads or changes
+  useEffect(() => {
+    if (students.length > 0) {
+      // If current selected student isn't in the loaded list, select the first student
+      if (!students.some(s => s.id === selectedStudentId)) {
+        setSelectedStudentId(students[0].id);
+      }
+    } else {
+      setSelectedStudentId("");
+    }
+  }, [students, selectedStudentId]);
+
+  const [ALLOWED_CLASSES, setAllowedClasses] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("edugrade_allowed_classes");
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {}
+    return ["Class 3A", "Class 3B"];
+  });
+
+  const [ALLOWED_BATCHES, setAllowedBatches] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("edugrade_allowed_batches");
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {}
+    return ["2083 BS", "2082 BS"];
+  });
+
+  const [showAddClassForm, setShowAddClassForm] = useState(false);
+  const [showAddBatchForm, setShowAddBatchForm] = useState(false);
+
+  const [showSidebarClassInput, setShowSidebarClassInput] = useState(false);
+  const [showSidebarBatchInput, setShowSidebarBatchInput] = useState(false);
+  const [sidebarClassText, setSidebarClassText] = useState("");
+  const [sidebarBatchText, setSidebarBatchText] = useState("");
+
+  const handleAddCustomClass = (newClass: string) => {
+    const trimmed = newClass.trim();
+    if (!trimmed) return;
+    if (ALLOWED_CLASSES.includes(trimmed)) {
+      triggerStatus(`⚠️ Class ${trimmed} already exists.`);
+      return;
+    }
+    const updated = [...ALLOWED_CLASSES, trimmed];
+    setAllowedClasses(updated);
+    localStorage.setItem("edugrade_allowed_classes", JSON.stringify(updated));
+    triggerStatus(`🎉 Added custom Class: ${trimmed}`);
+    setShowAddClassForm(false);
+  };
+
+  const handleAddCustomBatch = (newBatch: string) => {
+    const trimmed = newBatch.trim();
+    if (!trimmed) return;
+    if (ALLOWED_BATCHES.includes(trimmed)) {
+      triggerStatus(`⚠️ Batch ${trimmed} already exists.`);
+      return;
+    }
+    const updated = [...ALLOWED_BATCHES, trimmed];
+    setAllowedBatches(updated);
+    localStorage.setItem("edugrade_allowed_batches", JSON.stringify(updated));
+    triggerStatus(`🎉 Added custom Academic Batch: ${trimmed}`);
+    setShowAddBatchForm(false);
+  };
+
   const ALLOWED_PHASES = ["Phase 1", "Phase 2", "Phase 3", "Phase 4"];
 
   const [classFilter, setClassFilter] = useState<string>("all");
   const [phaseFilter, setPhaseFilter] = useState<string>("all");
-  const [workspaceTab, setWorkspaceTab] = useState<"editor" | "report">("editor");
+  const [batchFilter, setBatchFilter] = useState<string>("all");
+  const [workspaceTab, setWorkspaceTab] = useState<"editor" | "report" | "branding">("editor");
   const [editorMode, setEditorMode] = useState<"matrix" | "single">("matrix");
   const [searchQuery, setSearchQuery] = useState("");
   const [parentViewMode, setParentViewMode] = useState(true); // Hide raw numbers from form by default
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [newStudentName, setNewStudentName] = useState("");
-  const [newStudentGrade, setNewStudentGrade] = useState("Class 4A");
+  const [newStudentGrade, setNewStudentGrade] = useState("Class 3A");
   const [newStudentPhase, setNewStudentPhase] = useState("Phase 1");
   const [newStudentRollNo, setNewStudentRollNo] = useState("");
+  const [newStudentBatch, setNewStudentBatch] = useState("2083 BS");
   const [isAddingStudent, setIsAddingStudent] = useState(false);
-  const [schoolName, setSchoolName] = useState("BORCELLE SCHOOL OF COMPUTING");
+
+  const [schoolName, setSchoolName] = useState(() => {
+    try {
+      if (typeof window !== "undefined") {
+        if (window.opener && !window.opener.closed) {
+          const openerSchool = window.opener.localStorage.getItem("edugrade_schoolName");
+          if (openerSchool) {
+            if (openerSchool.toUpperCase().includes("BORCELLE")) {
+              return "MOUNT ANNAPURNA SECONDARY SCHOOL";
+            }
+            return openerSchool;
+          }
+        }
+        const saved = localStorage.getItem("edugrade_schoolName");
+        if (saved) {
+          if (saved.toUpperCase().includes("BORCELLE")) {
+            localStorage.setItem("edugrade_schoolName", "MOUNT ANNAPURNA SECONDARY SCHOOL");
+            return "MOUNT ANNAPURNA SECONDARY SCHOOL";
+          }
+          return saved;
+        }
+      }
+    } catch (e) {}
+    return "MOUNT ANNAPURNA SECONDARY SCHOOL";
+  });
+
+  const [schoolMotto, setSchoolMotto] = useState(() => {
+    try {
+      if (typeof window !== "undefined") {
+        if (window.opener && !window.opener.closed) {
+          const openerMotto = window.opener.localStorage.getItem("edugrade_schoolMotto");
+          if (openerMotto) {
+            if (openerMotto.toUpperCase().includes("BORCELLE")) {
+              return "LOVE TO LEARN - LIVE TO SERVE";
+            }
+            return openerMotto;
+          }
+        }
+        const saved = localStorage.getItem("edugrade_schoolMotto");
+        if (saved) {
+          if (saved.toUpperCase().includes("BORCELLE")) {
+            localStorage.setItem("edugrade_schoolMotto", "LOVE TO LEARN - LIVE TO SERVE");
+            return "LOVE TO LEARN - LIVE TO SERVE";
+          }
+          return saved;
+        }
+      }
+    } catch (e) {}
+    return "LOVE TO LEARN - LIVE TO SERVE";
+  });
+
+  const [schoolLogo, setSchoolLogo] = useState<string | null>(() => {
+    try {
+      if (typeof window !== "undefined") {
+        if (window.opener && !window.opener.closed) {
+          const openerLogo = window.opener.localStorage.getItem("school_logo");
+          if (openerLogo) return openerLogo;
+        }
+        const saved = localStorage.getItem("school_logo");
+        if (saved) return saved;
+      }
+    } catch (e) {}
+    return null;
+  });
+
   const [statusMessage, setStatusMessage] = useState("");
+  const [studentToDelete, setStudentToDelete] = useState<{ id: string; name: string } | null>(null);
+
+  const filteredStudents = students.filter((s) => {
+    const matchesSearch =
+      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      s.grade.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      s.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (s.rollNo && s.rollNo.toString().toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (s.batch && s.batch.toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchesClass = classFilter === "all" || s.grade === classFilter;
+    const matchesPhase = phaseFilter === "all" || (s.phase || "Phase 1") === phaseFilter;
+    const matchesBatch = batchFilter === "all" || (s.batch || "2083 BS") === batchFilter;
+    return matchesSearch && matchesClass && matchesPhase && matchesBatch;
+  });
 
   const activeStudent = students.find((s) => s.id === selectedStudentId);
 
@@ -182,14 +284,40 @@ export default function App() {
         student={previewStudent} 
         mode={mode} 
         schoolName={schoolName} 
+        motto={schoolMotto}
+        logoUrl={schoolLogo}
       />
     );
   }
 
-  // Persistence
+  // Persistence (Auto-saving is disabled per user request. Saving is done manually via Save Changes click or Ctrl+S)
+
+  // Listen for storage changes in other tabs/windows to keep all views completely consistent
   useEffect(() => {
-    localStorage.setItem("edugrade_students", JSON.stringify(students));
-  }, [students]);
+    const handleStorageChange = (e: StorageEvent) => {
+      try {
+        if (e.key === "edugrade_students" && e.newValue) {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) {
+            setStudents(parsed);
+          }
+        }
+        if (e.key === "edugrade_schoolName" && e.newValue !== null) {
+          setSchoolName(e.newValue);
+        }
+        if (e.key === "edugrade_schoolMotto" && e.newValue !== null) {
+          setSchoolMotto(e.newValue);
+        }
+        if (e.key === "school_logo") {
+          setSchoolLogo(e.newValue);
+        }
+      } catch (err) {
+        console.warn("Storage sync error", err);
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
 
   const [isIframe, setIsIframe] = useState(false);
   const [isPdfExporting, setIsPdfExporting] = useState(false);
@@ -207,6 +335,154 @@ export default function App() {
     setTimeout(() => setStatusMessage(""), 4000);
   };
 
+  const handleManualSaveAll = (customMsg?: string) => {
+    try {
+      localStorage.setItem("edugrade_students", JSON.stringify(students));
+      localStorage.setItem("edugrade_schoolName", schoolName);
+      localStorage.setItem("edugrade_schoolMotto", schoolMotto);
+      if (schoolLogo) {
+        localStorage.setItem("school_logo", schoolLogo);
+      } else {
+        localStorage.removeItem("school_logo");
+      }
+      setHasUnsaved(false);
+      triggerStatus(customMsg || "🎉 Saved all progress successfully & permanently!");
+    } catch (e) {
+      console.error("Local storage save error:", e);
+      triggerStatus("⚠️ Failed to save. Local storage might be full or restricted.");
+    }
+  };
+
+  useEffect(() => {
+    const handleShortcutKeys = (e: KeyboardEvent) => {
+      // Check for Ctrl+S or Cmd+S
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        handleManualSaveAll();
+      }
+      
+      // Check for Ctrl+P or Cmd+P
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        printReport("print");
+      }
+    };
+    
+    window.addEventListener("keydown", handleShortcutKeys);
+    return () => window.removeEventListener("keydown", handleShortcutKeys);
+  }, [students, schoolName, schoolMotto, schoolLogo, activeStudent]);
+
+  const handleKeyDownInMatrix = (
+    e: React.KeyboardEvent<any>,
+    studentId: string,
+    field: string
+  ) => {
+    const listFieldsInOrder = [
+      "name",
+      "rollNo",
+      "grade",
+      "phase",
+      "batch",
+      "participation",
+      "homework",
+      "mcq",
+      "project",
+      "lab"
+    ];
+    const colIndex = listFieldsInOrder.indexOf(field);
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      const sIndex = filteredStudents.findIndex((st) => st.id === studentId);
+      if (sIndex > 0) {
+        const prevStudent = filteredStudents[sIndex - 1];
+        setSelectedStudentId(prevStudent.id);
+        setTimeout(() => {
+          const targetInput = document.getElementById(`input-${prevStudent.id}-${field}`);
+          if (targetInput) {
+            targetInput.focus();
+            if (targetInput instanceof HTMLInputElement) {
+              targetInput.select();
+            }
+          }
+        }, 10);
+      }
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      const sIndex = filteredStudents.findIndex((st) => st.id === studentId);
+      if (sIndex !== -1 && sIndex < filteredStudents.length - 1) {
+        const nextStudent = filteredStudents[sIndex + 1];
+        setSelectedStudentId(nextStudent.id);
+        setTimeout(() => {
+          const targetInput = document.getElementById(`input-${nextStudent.id}-${field}`);
+          if (targetInput) {
+            targetInput.focus();
+            if (targetInput instanceof HTMLInputElement) {
+              targetInput.select();
+            }
+          }
+        }, 10);
+      }
+    } else if (e.key === "ArrowLeft") {
+      if (colIndex > 0) {
+        e.preventDefault();
+        const prevField = listFieldsInOrder[colIndex - 1];
+        setTimeout(() => {
+          const targetInput = document.getElementById(`input-${studentId}-${prevField}`);
+          if (targetInput) {
+            targetInput.focus();
+            if (targetInput instanceof HTMLInputElement) {
+              targetInput.select();
+            }
+          }
+        }, 10);
+      }
+    } else if (e.key === "ArrowRight") {
+      if (colIndex !== -1 && colIndex < listFieldsInOrder.length - 1) {
+        e.preventDefault();
+        const nextField = listFieldsInOrder[colIndex + 1];
+        setTimeout(() => {
+          const targetInput = document.getElementById(`input-${studentId}-${nextField}`);
+          if (targetInput) {
+            targetInput.focus();
+            if (targetInput instanceof HTMLInputElement) {
+              targetInput.select();
+            }
+          }
+        }, 10);
+      }
+    }
+  };
+
+  useEffect(() => {
+    const handleGlobalNavigation = (e: KeyboardEvent) => {
+      if (
+        document.activeElement?.tagName === "INPUT" ||
+        document.activeElement?.tagName === "TEXTAREA" ||
+        document.activeElement?.tagName === "SELECT"
+      ) {
+        return;
+      }
+
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const sIndex = filteredStudents.findIndex((st) => st.id === selectedStudentId);
+        if (sIndex > 0) {
+          setSelectedStudentId(filteredStudents[sIndex - 1].id);
+        }
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const sIndex = filteredStudents.findIndex((st) => st.id === selectedStudentId);
+        if (sIndex !== -1 && sIndex < filteredStudents.length - 1) {
+          setSelectedStudentId(filteredStudents[sIndex + 1].id);
+        }
+      }
+    };
+    
+    window.addEventListener("keydown", handleGlobalNavigation);
+    return () => window.removeEventListener("keydown", handleGlobalNavigation);
+  }, [filteredStudents, selectedStudentId]);
+
   const handleScoreChange = (key: ComponentKey, value: number) => {
     if (!activeStudent) return;
     
@@ -219,19 +495,31 @@ export default function App() {
         const nextScores = { ...s.scores, [key]: clamped };
         // Auto update remarks matching score performance bands
         const autoRemarks = generateDefaultRemarks(nextScores);
+        // Auto update evaluation scale matching the score band rating
+        const nextPct = calculatePercentage(clamped, max);
+        const nextRating = percentageToRating(nextPct);
+        const nextRatingDesc = ratingToDescriptor(nextRating);
+        const nextAfterSupport = { ...s.afterSupport, [key]: nextRatingDesc };
+        // Auto update student general strengths and improvements in real-time
+        const autoFeedback = generateDefaultStrengthsAndImprovements(nextScores);
+
         return {
           ...s,
           scores: nextScores,
+          afterSupport: nextAfterSupport,
           remarks: {
             ...s.remarks,
             [key]: autoRemarks[key]
-          }
+          },
+          strengths: autoFeedback.strengths,
+          areasOfImprovement: autoFeedback.areasOfImprovement
         };
       }
       return s;
     });
 
     setStudents(updatedStudents);
+    setHasUnsaved(true);
   };
 
   const handleAfterSupportChange = (key: ComponentKey, val: string) => {
@@ -250,6 +538,7 @@ export default function App() {
         return s;
       })
     );
+    setHasUnsaved(true);
   };
 
   const handleCustomRemarksChange = (key: ComponentKey, val: string) => {
@@ -268,6 +557,7 @@ export default function App() {
         return s;
       })
     );
+    setHasUnsaved(true);
   };
 
   const handleStudentFieldChange = (field: keyof StudentRecord, val: any) => {
@@ -280,6 +570,7 @@ export default function App() {
         return s;
       })
     );
+    setHasUnsaved(true);
   };
 
   const handleStudentFieldChangeInList = (studentId: string, field: keyof StudentRecord, val: any) => {
@@ -291,6 +582,7 @@ export default function App() {
         return s;
       })
     );
+    setHasUnsaved(true);
   };
 
   const handleScoreChangeInList = (studentId: string, key: ComponentKey, value: number) => {
@@ -301,18 +593,29 @@ export default function App() {
       students.map((s) => {
         if (s.id === studentId) {
           const nextScores = { ...s.scores, [key]: clamped };
+          const autoRemarks = generateDefaultRemarks(nextScores);
+          const nextPct = calculatePercentage(clamped, max);
+          const nextRating = percentageToRating(nextPct);
+          const nextRatingDesc = ratingToDescriptor(nextRating);
+          const nextAfterSupport = { ...s.afterSupport, [key]: nextRatingDesc };
+          const autoFeedback = generateDefaultStrengthsAndImprovements(nextScores);
+
           return {
             ...s,
             scores: nextScores,
+            afterSupport: nextAfterSupport,
             remarks: {
               ...s.remarks,
-              [key]: generateDefaultRemarks(nextScores)[key]
-            }
+              [key]: autoRemarks[key]
+            },
+            strengths: autoFeedback.strengths,
+            areasOfImprovement: autoFeedback.areasOfImprovement
           };
         }
         return s;
       })
     );
+    setHasUnsaved(true);
   };
 
   const handleAddStudent = (e: React.FormEvent) => {
@@ -334,6 +637,7 @@ export default function App() {
       grade: newStudentGrade,
       phase: newStudentPhase,
       rollNo: newStudentRollNo.trim() || (students.length + 1).toString(),
+      batch: newStudentBatch.trim() || "2083 BS",
       date: new Date().toISOString().substring(0, 10),
       evaluator: "Mr. Sudeep Shrestha",
       scores: standardScores,
@@ -355,18 +659,25 @@ export default function App() {
     setNewStudentName("");
     setNewStudentRollNo("");
     setIsAddingStudent(false);
+    setHasUnsaved(true);
     triggerStatus(`Successfully enrolled student ${newRec.name}`);
   };
 
   const handleDeleteStudent = (id: string, name: string) => {
-    if (confirm(`Are you sure you want to completely erase ${name} from classroom roster?`)) {
-      const filtered = students.filter((s) => s.id !== id);
-      setStudents(filtered);
-      if (selectedStudentId === id) {
-        setSelectedStudentId(filtered.length > 0 ? filtered[0].id : "");
-      }
-      triggerStatus(`Removed ${name} from class ledger`);
+    setStudentToDelete({ id, name });
+  };
+
+  const confirmDeleteStudent = () => {
+    if (!studentToDelete) return;
+    const { id, name } = studentToDelete;
+    const filtered = students.filter((s) => s.id !== id);
+    setStudents(filtered);
+    if (selectedStudentId === id) {
+      setSelectedStudentId(filtered.length > 0 ? filtered[0].id : "");
     }
+    setHasUnsaved(true);
+    triggerStatus(`Removed ${name} from class ledger`);
+    setStudentToDelete(null);
   };
 
   // Call the server-side Gemini API proxy to generate intelligent evaluations
@@ -400,6 +711,7 @@ export default function App() {
             return s;
           })
         );
+        setHasUnsaved(true);
         triggerStatus("AI successfully compiled custom Strengths & Improvement Areas!");
       } else {
         throw new Error("Empty response schema returned.");
@@ -436,16 +748,6 @@ export default function App() {
     window.open(url, "_blank");
   };
 
-  const filteredStudents = students.filter((s) => {
-    const matchesSearch =
-      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.grade.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (s.rollNo && s.rollNo.toString().toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesClass = classFilter === "all" || s.grade === classFilter;
-    const matchesPhase = phaseFilter === "all" || (s.phase || "Phase 1") === phaseFilter;
-    return matchesSearch && matchesClass && matchesPhase;
-  });
 
   const renderStudentRoster = (compact: boolean = false) => {
     if (filteredStudents.length === 0) {
@@ -524,6 +826,91 @@ export default function App() {
     );
   };
 
+  if (!isAuthenticated && !isPrintPreviewRoute) {
+    const handleLoginSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      // Obfuscated Base64 decoder: "MTEyMQ==" decodes to "1121"
+      if (btoa(pinInput) === "MTEyMQ==") {
+        setIsAuthenticated(true);
+        sessionStorage.setItem("edugrade_authenticated", "true");
+        setPinError(false);
+      } else {
+        setPinError(true);
+        setPinInput("");
+      }
+    };
+
+    return (
+      <div className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-4 relative overflow-hidden font-sans select-none">
+        {/* Abstract background decorative blobs */}
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 rounded-full bg-blue-600/10 blur-3xl pointer-events-none" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 rounded-full bg-emerald-600/10 blur-3xl pointer-events-none" />
+
+        <div className="w-full max-w-md bg-slate-950/70 backdrop-blur-md rounded-2xl border border-slate-800 shadow-2xl overflow-hidden p-8 flex flex-col gap-6 relative z-10">
+          <div className="flex flex-col items-center text-center gap-3">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-emerald-500 p-[1.5px]">
+              <div className="w-full h-full rounded-[14px] bg-slate-950 flex items-center justify-center">
+                <Lock className="h-6 w-6 text-emerald-400" />
+              </div>
+            </div>
+            <div>
+              <h2 className="text-xl font-black tracking-tight text-white">EduGrade Central Ledger</h2>
+              <p className="text-xs text-slate-400 mt-1 font-medium max-w-[300px]">
+                Authorized CDC Centralized Administration and Marks Ledger System
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handleLoginSubmit} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1.5">
+                <span>Enter Authority PIN</span>
+                <span className="text-[10px] text-slate-500 font-normal normal-case">(Set up by local instruction rules)</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="password"
+                  maxLength={6}
+                  pattern="[0-9]*"
+                  inputMode="numeric"
+                  value={pinInput}
+                  onChange={(e) => {
+                    setPinInput(e.target.value.replace(/\D/g, ""));
+                    setPinError(false);
+                  }}
+                  placeholder="••••"
+                  autoFocus
+                  className="w-full text-center tracking-[1.5em] text-lg font-black bg-slate-900 border border-slate-800 hover:border-slate-700 focus:border-emerald-500 focus:outline-none p-3.5 rounded-xl text-emerald-400 placeholder-slate-700 transition-all font-mono"
+                />
+              </div>
+              {pinError && (
+                <span className="text-xs text-rose-400 font-bold bg-rose-500/10 border border-rose-500/20 px-3 py-1.5 rounded-lg flex items-center gap-1.5 mt-1.5 animate-pulse">
+                  <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
+                  <span>Access Denied. Incorrect Security PIN code.</span>
+                </span>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              disabled={pinInput.length < 4}
+              className="w-full bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-500 hover:to-emerald-500 disabled:opacity-40 text-white font-extrabold text-sm py-3 px-4 rounded-xl shadow-lg transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2"
+            >
+              <span>Unlock Authorities</span>
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </form>
+
+          <div className="border-t border-slate-800/80 pt-4 text-center">
+            <span className="text-[10px] text-slate-500 font-medium">
+              Continuous grading aligns strictly with CDC regulatory grading metrics
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans selection:bg-slate-200">
       
@@ -532,6 +919,49 @@ export default function App() {
         <div className="fixed top-4 right-4 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl z-50 flex items-center gap-3 border border-slate-700 animate-slide-in font-medium transition-all text-sm">
           <div className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
           <span>{statusMessage}</span>
+        </div>
+      )}
+
+      {/* Custom Safe Deletion Confirmation Modal */}
+      {studentToDelete && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 print:hidden animate-fade-in">
+          <div 
+            className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-100 p-6 flex flex-col gap-4 animate-scale-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-rose-50 flex items-center justify-center text-rose-600 shrink-0">
+                <Trash2 className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-sm sm:text-base tracking-tight">
+                  Erase Student Record?
+                </h3>
+                <p className="text-xs text-slate-400 font-medium">This operation is permanent</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100">
+              Are you completely sure you want to delete <strong className="text-slate-900 font-extrabold">{studentToDelete.name}</strong> from the classroom ledger? This will permanently erase their exam scores, lab metrics, and generated remarks.
+            </p>
+
+            <div className="flex justify-end items-center gap-2.5 mt-2">
+              <button
+                type="button"
+                onClick={() => setStudentToDelete(null)}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-605 bg-slate-100 hover:bg-slate-200 transition-all cursor-pointer"
+              >
+                Cancel, Keep Record
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteStudent}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 hover:shadow-lg hover:shadow-rose-600/10 transition-all cursor-pointer"
+              >
+                Yes, Erase Record
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -582,7 +1012,7 @@ export default function App() {
 
       {/* Sub-header Platform Workspace Tabs */}
       <div className="bg-slate-900/10 border-b border-slate-250 py-3 px-6 flex flex-col sm:flex-row justify-between items-center gap-3 print:hidden shadow-sm z-30 bg-white">
-        <div className="flex gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
           <button
             type="button"
             onClick={() => setWorkspaceTab("editor")}
@@ -613,20 +1043,167 @@ export default function App() {
             <Eye className="h-3.5 w-3.5 text-emerald-500" />
             <span>📄 Print Official A4 Report Card</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setWorkspaceTab("branding")}
+            className={`flex-1 sm:flex-initial px-5 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              workspaceTab === "branding" 
+                ? "bg-slate-900 text-white shadow-md shadow-slate-900/15 border border-slate-900" 
+                : "bg-slate-50 text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200"
+            }`}
+          >
+            <Settings className="h-3.5 w-3.5 text-amber-500" />
+            <span>🏫 School Logo & Branding</span>
+          </button>
         </div>
 
-        {activeStudent && (
-          <div className="text-xs font-semibold text-slate-600 flex items-center gap-2">
+        {activeStudent ? (
+          <div className="text-xs font-semibold text-slate-600 flex flex-wrap items-center gap-2">
             <span>Evaluating Record:</span>
             <span className="font-extrabold bg-blue-50 border border-blue-100 text-blue-700 px-3 py-1 rounded-lg">
               {activeStudent.name} ({activeStudent.grade} · {activeStudent.phase || "Phase 1"})
             </span>
+
+            {hasUnsaved ? (
+              <div className="flex items-center gap-1.5 text-[10.5px] font-black text-amber-600 bg-amber-50 border border-amber-150 rounded-lg px-2.5 py-1 animate-pulse">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-sm" />
+                <span>Unsaved (Ctrl+S)</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 text-[10.5px] font-bold text-emerald-600 bg-emerald-50/50 border border-emerald-100 rounded-lg px-2.5 py-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                <span>Saved</span>
+              </div>
+            )}
+
+            <button
+              id="btn-manual-save"
+              type="button"
+              onClick={() => handleManualSaveAll()}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[11px] px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm ml-2 mr-1 animate-fade-in"
+              title="Manually save all current changes instantly"
+            >
+              <CheckCircle className="h-3 w-3" />
+              <span>Save Changes</span>
+            </button>
+          </div>
+        ) : (
+          <div className="text-xs font-semibold text-slate-600 flex items-center gap-2">
+            {hasUnsaved ? (
+              <div className="flex items-center gap-1.5 text-[10.5px] font-black text-amber-600 bg-amber-50 border border-amber-150 rounded-lg px-2.5 py-1 animate-pulse">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-sm" />
+                <span>Unsaved (Ctrl+S)</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 text-[10.5px] font-bold text-emerald-600 bg-emerald-50/50 border border-emerald-100 rounded-lg px-2.5 py-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                <span>Saved</span>
+              </div>
+            )}
+
+            <button
+              id="btn-manual-save-global"
+              type="button"
+              onClick={() => handleManualSaveAll()}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[11px] px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm animate-fade-in"
+              title="Manually save all current changes instantly"
+            >
+              <CheckCircle className="h-3 w-3" />
+              <span>Save Changes</span>
+            </button>
           </div>
         )}
       </div>
 
       {/* Core Split Screen Working Platform */}
-      <main className="flex-1 flex flex-col lg:flex-row min-h-0 w-full overflow-hidden print:overflow-visible">
+      <main className="flex-1 flex flex-col lg:flex-row min-h-0 w-full overflow-hidden print:overflow-visible relative">
+        
+        {workspaceTab === "branding" && (
+          <div className="absolute inset-x-0 top-0 bottom-0 bg-slate-55/90 backdrop-blur-xs overflow-y-auto p-4 sm:p-6 md:p-8 z-30 flex justify-center items-start print:hidden">
+            <div className="w-full max-w-4xl space-y-6">
+              
+              {/* Educational Advisory Slate */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-slate-900 text-white flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border border-slate-800 shadow-xl">
+                <div>
+                  <h3 className="font-extrabold text-sm sm:text-base tracking-tight flex items-center gap-2">
+                    <GraduationCap className="h-5 w-5 text-amber-500" />
+                    <span>School Identity & Logo Configurator</span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1 max-w-xl leading-relaxed">
+                    Set up your institution's name, slogan / motto, and logo image. This configuration persists inside your browser and instantly format scales across all student transcripts, spreadsheet matrices, and A4 print files.
+                  </p>
+                </div>
+                
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setWorkspaceTab("editor")}
+                    className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-extrabold text-xs px-4 py-2.5 rounded-xl transition-colors cursor-pointer shrink-0"
+                  >
+                    Go To Editor
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWorkspaceTab("report")}
+                    className="bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition-colors cursor-pointer shrink-0 flex items-center gap-1.5"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    <span>Preview PDF Transcript</span>
+                  </button>
+                </div>
+              </div>
+
+              <BrandingSettings
+                currentSchoolName={schoolName}
+                onSchoolNameChange={(val) => {
+                  setSchoolName(val);
+                  setHasUnsaved(true);
+                }}
+                onSchoolLogoChange={(newLogo) => {
+                  setSchoolLogo(newLogo);
+                  setHasUnsaved(true);
+                  if (newLogo) {
+                    localStorage.setItem("school_logo", newLogo);
+                  } else {
+                    localStorage.removeItem("school_logo");
+                  }
+                }}
+                onSchoolMottoChange={(val) => {
+                  setSchoolMotto(val);
+                  setHasUnsaved(true);
+                }}
+                schoolMotto={schoolMotto}
+              />
+              
+              {/* Branding Live Preview Sheet Card */}
+              <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-4">
+                  Branding Application Preview (Live Document Header Look)
+                </span>
+                
+                <div className="border border-slate-200/80 rounded-xl p-4 sm:p-6 bg-slate-50/50">
+                  <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                    <div className="w-full max-w-[620px] overflow-hidden">
+                      <SchoolLogo 
+                        className="h-16 w-auto" 
+                        schoolName={schoolName}
+                        motto={schoolMotto}
+                        logoUrl={schoolLogo}
+                      />
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-xs font-black text-blue-700 bg-blue-50/80 border border-blue-100 rounded px-2.5 py-1">
+                        Active Header Setup
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+            </div>
+          </div>
+        )}
         
         {/* Left Side: Interactive Roster Ledger / Marks Loader */}
         <section className={`bg-white border-r border-slate-200 flex flex-col h-full overflow-y-auto print:hidden transition-all duration-300 ${
@@ -659,7 +1236,7 @@ export default function App() {
             {isAddingStudent && (
               <form onSubmit={handleAddStudent} className="bg-white border border-slate-200 p-4 rounded-xl shadow-sm mb-4 animate-fade-in">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Enrol New Student</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-3">
+                <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 mb-3">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">Full Name</label>
                     <input
@@ -684,17 +1261,62 @@ export default function App() {
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">Grade / Class</label>
-                    <select
-                      id="input-[student-grade]"
-                      value={newStudentGrade}
-                      onChange={(e) => setNewStudentGrade(e.target.value)}
-                      className="w-full text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 font-medium"
-                    >
-                      {ALLOWED_CLASSES.map((cls) => (
-                        <option key={cls} value={cls}>{cls}</option>
-                      ))}
-                    </select>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="block text-[11px] font-bold text-slate-400 uppercase">Grade / Class</label>
+                      <button
+                        type="button"
+                        onClick={() => setShowAddClassForm(!showAddClassForm)}
+                        className="text-blue-600 hover:text-blue-800 p-0.5 rounded cursor-pointer hover:bg-slate-150 transition"
+                        title="Add Custom Class Grade"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <select
+                        id="input-[student-grade]"
+                        value={newStudentGrade}
+                        onChange={(e) => setNewStudentGrade(e.target.value)}
+                        className="w-full text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 font-medium"
+                      >
+                        {ALLOWED_CLASSES.map((cls) => (
+                          <option key={cls} value={cls}>{cls}</option>
+                        ))}
+                      </select>
+                      {showAddClassForm && (
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 p-2 rounded-lg shadow-lg z-50 flex gap-2 animate-fade-in">
+                          <input
+                            type="text"
+                            placeholder="e.g. Class 3C"
+                            id="new-class-input"
+                            className="text-xs border border-slate-200 rounded px-2 py-1 w-full text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold"
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                const input = document.getElementById("new-class-input") as HTMLInputElement;
+                                if (input && input.value) {
+                                  handleAddCustomClass(input.value);
+                                  setNewStudentGrade(input.value.trim());
+                                }
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const input = document.getElementById("new-class-input") as HTMLInputElement;
+                              if (input && input.value) {
+                                handleAddCustomClass(input.value);
+                                setNewStudentGrade(input.value.trim());
+                              }
+                            }}
+                            className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-2 py-1 rounded transition"
+                          >
+                            Add
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">Term / Phase</label>
@@ -708,6 +1330,64 @@ export default function App() {
                         <option key={ph} value={ph}>{ph}</option>
                       ))}
                     </select>
+                  </div>
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="block text-[11px] font-bold text-slate-400 uppercase">Batch</label>
+                      <button
+                        type="button"
+                        onClick={() => setShowAddBatchForm(!showAddBatchForm)}
+                        className="text-amber-600 hover:text-amber-800 p-0.5 rounded cursor-pointer hover:bg-slate-150 transition"
+                        title="Add Custom Academic Batch"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <select
+                        id="input-[student-batch]"
+                        value={newStudentBatch}
+                        onChange={(e) => setNewStudentBatch(e.target.value)}
+                        className="w-full text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 font-medium"
+                      >
+                        {ALLOWED_BATCHES.map((b) => (
+                          <option key={b} value={b}>{b}</option>
+                        ))}
+                      </select>
+                      {showAddBatchForm && (
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 p-2 rounded-lg shadow-lg z-50 flex gap-2 animate-fade-in">
+                          <input
+                            type="text"
+                            placeholder="e.g. 2083 BS"
+                            id="new-batch-input"
+                            className="text-xs border border-slate-200 rounded px-2 py-1 w-full text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-550 font-semibold"
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                const input = document.getElementById("new-batch-input") as HTMLInputElement;
+                                if (input && input.value) {
+                                  handleAddCustomBatch(input.value);
+                                  setNewStudentBatch(input.value.trim());
+                                }
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const input = document.getElementById("new-batch-input") as HTMLInputElement;
+                              if (input && input.value) {
+                                handleAddCustomBatch(input.value);
+                                setNewStudentBatch(input.value.trim());
+                              }
+                            }}
+                            className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-2 py-1 rounded transition"
+                          >
+                            Add
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="flex justify-end gap-2 text-xs">
@@ -745,9 +1425,49 @@ export default function App() {
             {/* Class & Phase Roster Filter Bar */}
             <div className="mb-3 space-y-3 bg-white p-3 rounded-xl border border-slate-200">
               <div className="space-y-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                  Filter Students by Grade / Class
-                </span>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Filter Students by Grade / Class
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowSidebarClassInput(!showSidebarClassInput)}
+                    className="text-blue-600 hover:text-blue-800 p-0.5 rounded hover:bg-slate-100 transition"
+                    title="Add Custom Grade / Class"
+                  >
+                    <Plus className="h-3 w-3" />
+                  </button>
+                </div>
+                {showSidebarClassInput && (
+                  <div className="flex gap-1.5 py-1 animate-fade-in">
+                    <input
+                      type="text"
+                      placeholder="e.g. Class 3C"
+                      value={sidebarClassText}
+                      onChange={(e) => setSidebarClassText(e.target.value)}
+                      className="text-xs border border-slate-200 rounded px-2.5 py-1 w-full text-slate-800 font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 bg-slate-50 focus:bg-white"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddCustomClass(sidebarClassText);
+                          setSidebarClassText("");
+                          setShowSidebarClassInput(false);
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleAddCustomClass(sidebarClassText);
+                        setSidebarClassText("");
+                        setShowSidebarClassInput(false);
+                      }}
+                      className="bg-blue-600 hover:bg-blue-700 text-white text-[10.5px] font-bold px-2.5 py-1 rounded-lg transition"
+                    >
+                      Save
+                    </button>
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   <button
                     type="button"
@@ -815,6 +1535,88 @@ export default function App() {
                   })}
                 </div>
               </div>
+
+              {(() => {
+                const uniqueBatches = Array.from(new Set(students.map((s) => s.batch || "2083 BS").filter(Boolean)));
+                const allBatchOptions = Array.from(new Set([...ALLOWED_BATCHES, ...uniqueBatches]));
+                return (
+                  <div className="space-y-1 border-t border-slate-100 pt-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Filter Students by Academic Batch
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowSidebarBatchInput(!showSidebarBatchInput)}
+                        className="text-amber-600 hover:text-amber-800 p-0.5 rounded hover:bg-slate-100 transition"
+                        title="Add Custom Academic Batch"
+                      >
+                        <Plus className="h-3 w-3" />
+                      </button>
+                    </div>
+                    {showSidebarBatchInput && (
+                      <div className="flex gap-1.5 py-1 animate-fade-in">
+                        <input
+                          type="text"
+                          placeholder="e.g. 2083 BS"
+                          value={sidebarBatchText}
+                          onChange={(e) => setSidebarBatchText(e.target.value)}
+                          className="text-xs border border-slate-200 rounded px-2.5 py-1 w-full text-slate-800 font-semibold focus:outline-none focus:ring-1 focus:ring-amber-500 bg-slate-50 focus:bg-white"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleAddCustomBatch(sidebarBatchText);
+                              setSidebarBatchText("");
+                              setShowSidebarBatchInput(false);
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleAddCustomBatch(sidebarBatchText);
+                            setSidebarBatchText("");
+                            setShowSidebarBatchInput(false);
+                          }}
+                          className="bg-amber-600 hover:bg-amber-700 text-white text-[10.5px] font-bold px-2.5 py-1 rounded-lg transition"
+                        >
+                          Save
+                        </button>
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setBatchFilter("all")}
+                        className={`px-2.5 py-1 text-[10.5px] font-bold rounded-lg border transition-all cursor-pointer ${
+                          batchFilter === "all"
+                            ? "bg-slate-900 border-slate-900 text-white shadow-sm"
+                            : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        All Batches
+                      </button>
+                      {allBatchOptions.map((b) => {
+                        const count = students.filter((s) => (s.batch || "2083 BS") === b).length;
+                        return (
+                          <button
+                            key={b}
+                            type="button"
+                            onClick={() => setBatchFilter(b)}
+                            className={`px-2.5 py-1 text-[10.5px] font-bold rounded-lg border transition-all cursor-pointer ${
+                              batchFilter === b
+                                ? "bg-amber-600 border-amber-600 text-white shadow-sm"
+                                : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                            }`}
+                          >
+                            {b} ({count})
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
               
               {/* Search / Filter Tally */}
               <div className="text-[10px] text-slate-400 font-bold pt-1.5 flex justify-between items-center border-t border-slate-100">
@@ -866,6 +1668,7 @@ export default function App() {
                         <th className="py-2.5 px-2 text-left w-16">Roll No</th>
                         <th className="py-2.5 px-2 text-left w-24">Class</th>
                         <th className="py-2.5 px-2 text-left w-20">Phase</th>
+                        <th className="py-2.5 px-2 text-left w-20">Batch</th>
                         <th className="py-2.5 px-2 text-center w-12" title="Participation (Max 10)">Part (10)</th>
                         <th className="py-2.5 px-2 text-center w-12" title="Homework Sheets (Max 10)">HW (10)</th>
                         <th className="py-2.5 px-2 text-center w-12" title="MCQ Theoretical (Max 30)">MCQ (30)</th>
@@ -892,25 +1695,31 @@ export default function App() {
                             <td className="py-2.5 px-3 font-semibold text-slate-900 flex items-center gap-1.5">
                               <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-blue-600" : "bg-transparent"}`} />
                               <input
+                                id={`input-${st.id}-name`}
                                 type="text"
                                 value={st.name}
                                 onClick={(e) => e.stopPropagation()}
+                                onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "name")}
                                 onChange={(e) => handleStudentFieldChangeInList(st.id, "name", e.target.value)}
                                 className="bg-transparent text-xs text-slate-800 font-bold border-b border-transparent focus:border-blue-500 focus:bg-white focus:outline-none p-0.5 rounded transition w-full"
                               />
                             </td>
                             <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
                               <input
+                                id={`input-${st.id}-rollNo`}
                                 type="text"
                                 placeholder="R-"
                                 value={st.rollNo || ""}
+                                onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "rollNo")}
                                 onChange={(e) => handleStudentFieldChangeInList(st.id, "rollNo", e.target.value)}
                                 className="bg-transparent text-xs font-mono text-slate-800 font-bold border-b border-transparent hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none p-0.5 rounded transition w-12 text-center"
                               />
                             </td>
                             <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
                               <select
+                                id={`input-${st.id}-grade`}
                                 value={st.grade}
+                                onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "grade")}
                                 onChange={(e) => handleStudentFieldChangeInList(st.id, "grade", e.target.value)}
                                 className="bg-transparent hover:bg-slate-100 text-slate-800 font-semibold p-1 pr-3 text-xs focus:outline-none rounded border border-transparent border-b-slate-100 focus:border-blue-300 text-[11px]"
                               >
@@ -921,7 +1730,9 @@ export default function App() {
                             </td>
                             <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
                               <select
+                                id={`input-${st.id}-phase`}
                                 value={st.phase || "Phase 1"}
+                                onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "phase")}
                                 onChange={(e) => handleStudentFieldChangeInList(st.id, "phase", e.target.value)}
                                 className="bg-transparent hover:bg-slate-100 text-slate-800 font-semibold p-1 pr-3 text-xs focus:outline-none rounded border border-transparent border-b-slate-100 focus:border-blue-300 text-[11px]"
                               >
@@ -930,52 +1741,73 @@ export default function App() {
                                 ))}
                               </select>
                             </td>
+                            <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                id={`input-${st.id}-batch`}
+                                type="text"
+                                value={st.batch || "2083 BS"}
+                                onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "batch")}
+                                onChange={(e) => handleStudentFieldChangeInList(st.id, "batch", e.target.value)}
+                                className="bg-transparent text-xs text-slate-800 font-bold border-b border-transparent hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none p-0.5 rounded transition w-16 text-center"
+                                placeholder="eg. 2083"
+                              />
+                            </td>
                             <td className="py-2 px-1 text-center" onClick={(e) => e.stopPropagation()}>
                               <input
+                                id={`input-${st.id}-participation`}
                                 type="number"
                                 min="0"
                                 max="10"
                                 value={st.scores.participation}
+                                onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "participation")}
                                 onChange={(e) => handleScoreChangeInList(st.id, "participation", parseInt(e.target.value) || 0)}
                                 className="w-10 text-center font-mono font-bold bg-slate-50 border border-slate-200 rounded py-0.5 text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-none text-[11px]"
                               />
                             </td>
                             <td className="py-2 px-1 text-center" onClick={(e) => e.stopPropagation()}>
                               <input
+                                id={`input-${st.id}-homework`}
                                 type="number"
                                 min="0"
                                 max="10"
                                 value={st.scores.homework}
+                                onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "homework")}
                                 onChange={(e) => handleScoreChangeInList(st.id, "homework", parseInt(e.target.value) || 0)}
                                 className="w-10 text-center font-mono font-bold bg-slate-50 border border-slate-200 rounded py-0.5 text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-none text-[11px]"
                               />
                             </td>
                             <td className="py-2 px-1 text-center" onClick={(e) => e.stopPropagation()}>
                               <input
+                                id={`input-${st.id}-mcq`}
                                 type="number"
                                 min="0"
                                 max="30"
                                 value={st.scores.mcq}
+                                onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "mcq")}
                                 onChange={(e) => handleScoreChangeInList(st.id, "mcq", parseInt(e.target.value) || 0)}
                                 className="w-11 text-center font-mono font-bold bg-slate-50 border border-slate-200 rounded py-0.5 text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-none text-[11px]"
                               />
                             </td>
                             <td className="py-2 px-1 text-center" onClick={(e) => e.stopPropagation()}>
                               <input
+                                id={`input-${st.id}-project`}
                                 type="number"
                                 min="0"
                                 max="30"
                                 value={st.scores.project}
+                                onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "project")}
                                 onChange={(e) => handleScoreChangeInList(st.id, "project", parseInt(e.target.value) || 0)}
                                 className="w-11 text-center font-mono font-bold bg-slate-50 border border-slate-200 rounded py-0.5 text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-none text-[11px]"
                               />
                             </td>
                             <td className="py-2 px-1 text-center" onClick={(e) => e.stopPropagation()}>
                               <input
+                                id={`input-${st.id}-lab`}
                                 type="number"
                                 min="0"
                                 max="20"
                                 value={st.scores.lab}
+                                onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "lab")}
                                 onChange={(e) => handleScoreChangeInList(st.id, "lab", parseInt(e.target.value) || 0)}
                                 className="w-11 text-center font-mono font-bold bg-slate-50 border border-slate-200 rounded py-0.5 text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-none text-[11px]"
                               />
@@ -1045,7 +1877,7 @@ export default function App() {
                   </div>
 
                   {/* Roster Demographics Updates */}
-                  <div className="grid grid-cols-3 gap-3 bg-slate-50/50 p-3 rounded-xl border border-slate-100">
+                  <div className="grid grid-cols-4 gap-3 bg-slate-50/50 p-3 rounded-xl border border-slate-100">
                     <div>
                       <label className="block text-[10px] font-bold uppercase text-slate-400">Roll Number</label>
                       <input
@@ -1080,7 +1912,17 @@ export default function App() {
                         ))}
                       </select>
                     </div>
-                    <div className="col-span-3 pt-1 border-t border-slate-100 mt-1">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-slate-400">Batch Year</label>
+                      <input
+                        type="text"
+                        value={activeStudent.batch || "2083 BS"}
+                        onChange={(e) => handleStudentFieldChange("batch", e.target.value)}
+                        className="w-full text-xs font-extrabold bg-transparent border-b border-slate-250 focus:border-blue-500 focus:outline-none py-0.5 text-slate-800 transition"
+                        placeholder="e.g. 2083 BS"
+                      />
+                    </div>
+                    <div className="col-span-4 pt-1 border-t border-slate-100 mt-1">
                       <label className="block text-[10px] font-bold uppercase text-slate-400">Evaluator / Instructor Name</label>
                       <p className="w-full text-xs font-bold text-slate-700 py-1 bg-slate-100/50 px-2 rounded">
                         Mr. Sudeep Shrestha
@@ -1139,7 +1981,7 @@ export default function App() {
                             </span>
                             
                             <div className="flex items-center gap-1.5">
-                              <span className="text-slate-400">Support:</span>
+                              <span className="text-slate-400">Evaluation:</span>
                               <select
                                 id={`support-${key}`}
                                 value={activeStudent.afterSupport[key] || "Excellent"}
@@ -1148,7 +1990,7 @@ export default function App() {
                               >
                                 <option value="Excellent">Excellent</option>
                                 <option value="Very Good">Very Good</option>
-                                <option value="Satisfactory">Satisfactory</option>
+                                <option value="Good">Good</option>
                                 <option value="Needs Improvement">Needs Improvement</option>
                               </select>
                             </div>
@@ -1232,6 +2074,21 @@ export default function App() {
                         System auto-recalculates parent ratings, aligns progress descriptors, and fits everything inside the print-preview dynamically.
                       </p>
                     </div>
+
+                    {/* Highly accessible physical Save Changes Button with reassuring sound/feedback behavior */}
+                    <div className="pt-3 border-t border-slate-200">
+                      <button
+                        type="button"
+                        id="btn-form-manual-save"
+                        onClick={() => {
+                          handleManualSaveAll(`🎉 Saved all changes for ${activeStudent.name} permanently!`);
+                        }}
+                        className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm py-3 px-4 rounded-xl shadow-md shadow-emerald-100 hover:shadow-emerald-200 cursor-pointer transition-all active:scale-[0.98]"
+                      >
+                        <CheckCircle className="h-4 w-4" />
+                        <span>Save Student Changes</span>
+                      </button>
+                    </div>
                   </div>
 
                 </div>
@@ -1262,7 +2119,7 @@ export default function App() {
 
         </section>
 
-        {/* Right Side: Elegant "BORCELLE" Visual Portrait Transcript Preview */}
+        {/* Right Side: Elegant "Mount Annapurna" Visual Portrait Transcript Preview */}
         <section className="flex-1 bg-slate-100 p-3 sm:p-6 md:p-8 overflow-y-auto flex justify-center items-start print:bg-white print:p-0 print:overflow-visible">
           
           {activeStudent ? (
@@ -1275,7 +2132,7 @@ export default function App() {
                   <div>
                     <p className="font-semibold">Interactive Print Preview Studio</p>
                     <p className="text-[11px] text-amber-700/95 mt-0.5 leading-relaxed">
-                      This beautifully styled sheet matches the standard single-page Borcelle transcript. Toggle <strong className="font-extrabold text-slate-900">Official Parent View</strong> to hide internal raw marks. Click <strong className="font-extrabold text-slate-900">"Download PDF"</strong> or <strong className="font-extrabold text-slate-900">"Print Report"</strong>.
+                      This beautifully styled sheet matches the standard single-page Mount Annapurna transcript. Toggle <strong className="font-extrabold text-slate-900">Official Parent View</strong> to hide internal raw marks. Click <strong className="font-extrabold text-slate-900">"Download PDF"</strong> or <strong className="font-extrabold text-slate-900">"Print Report"</strong>.
                     </p>
                   </div>
                 </div>
@@ -1368,27 +2225,19 @@ export default function App() {
                 }`}
               >
                 
-                {/* BORCELLE Style Header */}
+                {/* Mount Annapurna Style Header */}
                 <div className="space-y-4">
-                  <div className="flex flex-col sm:flex-row justify-between items-start gap-4 border-b-2 border-slate-900 pb-4">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <School className="h-6 w-6 text-slate-900 stroke-[2.5]" />
-                        <span className="font-black text-xl tracking-tight text-slate-900 font-mono">
-                          <input
-                            id="edit-school-name"
-                            type="text"
-                            value={schoolName}
-                            onChange={(e) => setSchoolName(e.target.value.toUpperCase())}
-                            className="bg-transparent border-b border-transparent hover:border-slate-300 focus:border-slate-900 focus:outline-none uppercase font-extrabold"
-                            style={{ width: "320px" }}
-                          />
-                        </span>
-                      </div>
-                      <p className="text-[10px] uppercase font-bold tracking-widest text-slate-500">Official Performance Ledger</p>
+                  <div className="flex flex-col sm:flex-row justify-between items-center gap-4 border-b-2 border-slate-900 pb-4">
+                    <div className="w-full sm:max-w-[480px] md:max-w-[520px] overflow-hidden">
+                      <SchoolLogo 
+                        className="h-14 sm:h-16 w-auto" 
+                        schoolName={schoolName}
+                        motto={schoolMotto}
+                        logoUrl={schoolLogo}
+                      />
                     </div>
 
-                    <div className="text-left sm:text-right">
+                    <div className="text-left sm:text-right w-full sm:w-auto">
                       <h2 className="text-2xl font-black text-slate-900 tracking-tight leading-none uppercase">
                         Evaluation Report
                       </h2>
@@ -1399,8 +2248,8 @@ export default function App() {
                   </div>
 
                   {/* Candidate Info Grid / Student Info Grid */}
-                  <div className="bg-slate-50/80 rounded-lg p-3.5 grid grid-cols-3 gap-y-2.5 gap-x-4 border border-slate-200/80 text-xs shadow-inner">
-                    <div>
+                  <div className="bg-slate-50/80 rounded-lg p-3.5 grid grid-cols-4 gap-y-2.5 gap-x-4 border border-slate-200/80 text-xs shadow-inner">
+                    <div className="col-span-2">
                       <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Student Name</p>
                       <p className="font-extrabold text-slate-900 text-sm mt-0.5">{activeStudent.name}</p>
                     </div>
@@ -1416,13 +2265,18 @@ export default function App() {
                     </div>
 
                     <div>
-                      <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Evaluation Date</p>
-                      <p className="font-mono text-slate-805 mt-0.5">{activeStudent.date}</p>
+                      <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Academic Batch</p>
+                      <p className="font-extrabold text-slate-800 mt-0.5">{activeStudent.batch || "2083 BS"}</p>
                     </div>
 
                     <div>
                       <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Term / Phase</p>
                       <p className="font-bold text-slate-800 mt-0.5">{activeStudent.phase || "Phase 1"}</p>
+                    </div>
+
+                    <div>
+                      <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Evaluation Date</p>
+                      <p className="font-mono text-slate-805 mt-0.5">{activeStudent.date}</p>
                     </div>
 
                     <div>
@@ -1435,6 +2289,77 @@ export default function App() {
                     </div>
                   </div>
 
+                  {/* Evaluation Criteria Descriptor Box */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 border-b border-slate-200 pb-3">
+                    <div className="text-xs space-y-1.5 md:col-span-2">
+                      <h3 className="font-bold uppercase tracking-wider text-slate-500 text-[10px]">Academic Grading Level Standards</h3>
+                      <div className="grid grid-cols-4 sm:grid-cols-8 gap-1 text-[8.5px] leading-tight">
+                        <div className="bg-slate-50 p-1 rounded border border-slate-200 text-center flex flex-col justify-between h-full">
+                          <strong className="text-slate-900 block font-black text-[10px]">A+</strong>
+                          <span className="text-slate-500 block font-semibold font-mono text-[8.5px] leading-none my-0.5">(90%+)</span>
+                          <span className="text-slate-400 block text-[7.5px] mt-auto">Outstanding</span>
+                        </div>
+                        <div className="bg-slate-50 p-1 rounded border border-slate-200 text-center flex flex-col justify-between h-full">
+                          <strong className="text-slate-900 block font-black text-[10px]">A</strong>
+                          <span className="text-slate-500 block font-semibold font-mono text-[8.5px] leading-none my-0.5">(80-89%)</span>
+                          <span className="text-slate-400 block text-[7.5px] mt-auto">Excellent</span>
+                        </div>
+                        <div className="bg-slate-50 p-1 rounded border border-slate-200 text-center flex flex-col justify-between h-full">
+                          <strong className="text-slate-900 block font-black text-[10px]">B+</strong>
+                          <span className="text-slate-500 block font-semibold font-mono text-[8.5px] leading-none my-0.5">(70-79%)</span>
+                          <span className="text-slate-400 block text-[7.5px] mt-auto">Very Good</span>
+                        </div>
+                        <div className="bg-slate-50 p-1 rounded border border-slate-200 text-center flex flex-col justify-between h-full">
+                          <strong className="text-slate-900 block font-black text-[10px]">B</strong>
+                          <span className="text-slate-500 block font-semibold font-mono text-[8.5px] leading-none my-0.5">(60-69%)</span>
+                          <span className="text-slate-400 block text-[7.5px] mt-auto">Good</span>
+                        </div>
+                        <div className="bg-slate-50 p-1 rounded border border-slate-200 text-center flex flex-col justify-between h-full">
+                          <strong className="text-slate-900 block font-black text-[10px]">C+</strong>
+                          <span className="text-slate-500 block font-semibold font-mono text-[8.5px] leading-none my-0.5">(50-59%)</span>
+                          <span className="text-slate-400 block text-[7.5px] mt-auto">Satisfactory</span>
+                        </div>
+                        <div className="bg-slate-50 p-1 rounded border border-slate-200 text-center flex flex-col justify-between h-full">
+                          <strong className="text-slate-900 block font-black text-[10px]">C</strong>
+                          <span className="text-slate-500 block font-semibold font-mono text-[8.5px] leading-none my-0.5">(40-49%)</span>
+                          <span className="text-slate-400 block text-[7.5px] mt-auto">Acceptable</span>
+                        </div>
+                        <div className="bg-slate-50 p-1 rounded border border-slate-200 text-center flex flex-col justify-between h-full">
+                          <strong className="text-slate-900 block font-black text-[10px]">D</strong>
+                          <span className="text-slate-500 block font-semibold font-mono text-[8.5px] leading-none my-0.5">(35-39%)</span>
+                          <span className="text-slate-400 block text-[7.5px] mt-auto">Basic</span>
+                        </div>
+                        <div className="bg-slate-50 p-1 rounded border border-slate-200 text-center flex flex-col justify-between h-full">
+                          <strong className="text-slate-900 block font-black text-[10px]">NG</strong>
+                          <span className="text-rose-500 block font-semibold font-mono text-[8.5px] leading-none my-0.5">(&lt;35%)</span>
+                          <span className="text-rose-500 block text-[7.5px] mt-auto font-bold">Ungraded</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-xs space-y-1.5">
+                      <h3 className="font-bold uppercase tracking-wider text-slate-500 text-[10px]">Evaluation Rating Scale Legends</h3>
+                      <div className="grid grid-cols-2 gap-1 text-[9px] leading-tight">
+                        <div className="bg-slate-50 p-1 rounded border border-slate-200 flex items-center gap-1">
+                          <span className="w-3.5 h-3.5 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-[8.5px] font-mono">4</span>
+                          <span className="text-slate-700 font-semibold ml-1">Excellent</span>
+                        </div>
+                        <div className="bg-slate-50 p-1 rounded border border-slate-200 flex items-center gap-1">
+                          <span className="w-3.5 h-3.5 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-[8.5px] font-mono">3</span>
+                          <span className="text-slate-700 font-semibold ml-1">Very Good</span>
+                        </div>
+                        <div className="bg-slate-50 p-1 rounded border border-slate-200 flex items-center gap-1">
+                          <span className="w-3.5 h-3.5 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-[8.5px] font-mono">2</span>
+                          <span className="text-slate-700 font-semibold ml-1">Satisfactory</span>
+                        </div>
+                        <div className="bg-slate-50 p-1 rounded border border-slate-200 flex items-center gap-1">
+                          <span className="w-3.5 h-3.5 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-[8.5px] font-mono">1</span>
+                          <span className="text-slate-700 font-semibold ml-1">Needs Improvement</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Core Components Evaluation Table */}
                   <div className="overflow-x-auto pt-2">
                     <table className="w-full text-left border-collapse text-xs">
@@ -1442,7 +2367,7 @@ export default function App() {
                         <tr className="border-b border-slate-300 text-slate-700 uppercase font-bold text-[9px] tracking-widest bg-slate-50/80">
                           <th className="py-2 px-3 w-5/12">Grading Area Component</th>
                           <th className="py-2 px-2 text-center w-2/12">Rating</th>
-                          <th className="py-2 px-2 text-center w-2/12">Post Support</th>
+                          <th className="py-2 px-2 text-center w-2/12">Evaluation Scale</th>
                           <th className="py-2 px-3 w-3/12">Educator Remarks</th>
                         </tr>
                       </thead>
@@ -1475,10 +2400,10 @@ export default function App() {
                                     return (
                                       <span
                                         key={num}
-                                        className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold ${
+                                        className={`inline-flex items-center justify-center w-5.5 h-5.5 rounded-full text-[10.5px] font-bold border transition ${
                                           isMatched
-                                            ? "bg-slate-900 text-white font-black"
-                                            : "text-slate-300"
+                                            ? "bg-slate-900 text-white border-slate-900 font-extrabold shadow-sm"
+                                            : "bg-transparent text-slate-300 border-slate-100"
                                         }`}
                                       >
                                         {num}
@@ -1592,9 +2517,20 @@ export default function App() {
         <div>
           <span>© 2026 EduGrade Software Inc. Continuous grading aligns strictly with central CDC rating policies.</span>
         </div>
-        <div className="flex justify-center gap-4 text-[11px] font-medium">
-          <span className="text-slate-500">System Clock: 2026 UTC</span>
-          <span className="text-slate-500 font-mono">1 = Beginner, 4 = Excellent Scale</span>
+        <div className="flex justify-center items-center gap-4 text-[11px] font-medium">
+          {hasUnsaved ? (
+            <div className="flex items-center gap-1.5 text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-md border border-amber-500/20 font-bold uppercase tracking-wider text-[9px] shadow-sm animate-pulse">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              <span>Unsaved Changes</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-md border border-emerald-500/20 font-bold uppercase tracking-wider text-[9px] shadow-sm">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <span>All Changes Saved</span>
+            </div>
+          )}
+          <span className="text-slate-550">System Clock: 2026 UTC</span>
+          <span className="text-slate-550 font-mono">1 = Beginner, 4 = Excellent Scale</span>
         </div>
       </footer>
 
