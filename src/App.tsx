@@ -25,7 +25,9 @@ import {
   Lock,
   ShieldAlert,
   ArrowRight,
-  CornerDownLeft
+  CornerDownLeft,
+  Upload,
+  FolderArchive
 } from "lucide-react";
 import { StudentRecord, COMPONENT_DETAILS, ComponentKey, ScoreComponents } from "./types";
 import { 
@@ -488,6 +490,9 @@ export default function App() {
     
     // Validate score boundaries
     const max = COMPONENT_DETAILS[key].maxScore;
+    if (value > max) {
+      triggerStatus(`⚠️ Marks limit for ${COMPONENT_DETAILS[key].name} is ${max}! Clamping entry to ${max}.`);
+    }
     const clamped = Math.max(0, Math.min(max, value));
 
     const updatedStudents = students.map((s) => {
@@ -587,6 +592,9 @@ export default function App() {
 
   const handleScoreChangeInList = (studentId: string, key: ComponentKey, value: number) => {
     const max = COMPONENT_DETAILS[key].maxScore;
+    if (value > max) {
+      triggerStatus(`⚠️ Marks limit for ${COMPONENT_DETAILS[key].name} is ${max}! Clamping entry to ${max}.`);
+    }
     const clamped = Math.max(0, Math.min(max, value));
 
     setStudents(
@@ -729,22 +737,560 @@ export default function App() {
     triggerStatus("Class ledger Excel sheet generated successfully!");
   };
 
+  const downloadSinglePDFDirectly = async (studentToPrint: StudentRecord) => {
+    setIsPdfExporting(true);
+    triggerStatus(`Generating in-app high-fidelity PDF for ${studentToPrint.name}...`);
+    
+    setTimeout(async () => {
+      const element = document.getElementById("printable-report-card");
+      if (!element) {
+        setIsPdfExporting(false);
+        triggerStatus("❌ Error: printable-report-card container not found.");
+        return;
+      }
+      
+      const phaseRaw = studentToPrint.phase || "Phase 1";
+      const phaseStr = phaseRaw.toLowerCase().replace(/\s+/g, "").replace("phase", "ph");
+      const rollStr = studentToPrint.rollNo || "—";
+      const filenameClean = `${studentToPrint.name}-${phaseStr}-${studentToPrint.grade}-${rollStr}`.replace(/[\/\\:*?"<>|]/g, "_");
+      
+      const opt = {
+        margin:       0,
+        filename:     `${filenameClean}.pdf`,
+        image:        { type: "jpeg", quality: 0.98 },
+        html2canvas:  { 
+          scale: 2.2, 
+          useCORS: true, 
+          letterRendering: true,
+          logging: false,
+          backgroundColor: "#ffffff"
+        },
+        jsPDF:        { unit: "mm", format: "a4", orientation: "portrait" }
+      };
+
+      const getHtml2Pdf = () => {
+        if (typeof window === "undefined") return null;
+        if (typeof html2pdf === "function") return html2pdf;
+        if (html2pdf && typeof (html2pdf as any).default === "function") {
+          return (html2pdf as any).default;
+        }
+        if (typeof (window as any).html2pdf === "function") {
+          return (window as any).html2pdf;
+        }
+        return null;
+      };
+
+      try {
+        const exporter = getHtml2Pdf();
+        if (!exporter) {
+          throw new Error("Unable to resolve PDF exporter library.");
+        }
+        await exporter().set(opt).from(element).save();
+        triggerStatus(`🎉 Success: Downloaded "${filenameClean}.pdf"!`);
+      } catch (err: any) {
+        console.error("Direct PDF Error, falling back to window:", err);
+        const url = `/print-preview/${studentToPrint.id}?mode=download`;
+        window.open(url, "_blank");
+        triggerStatus("Spawning print-preview popup (direct save failed).");
+      } finally {
+        setIsPdfExporting(false);
+      }
+    }, 450);
+  };
+
+  const downloadCSVTemplate = () => {
+    const headers = [
+      "Student ID",
+      "Roll No",
+      "Student Name",
+      "Grade",
+      "Phase",
+      "Batch",
+      "Participation (Max 10)",
+      "Homework (Max 10)",
+      "MCQ (Max 30)",
+      "Project (Max 30)",
+      "Lab (Max 20)"
+    ];
+    
+    // Use currently filtered students so they edit the active classroom group's marks directly
+    const rows = filteredStudents.map((st) => [
+      st.id,
+      st.rollNo || "",
+      st.name,
+      st.grade,
+      st.phase || "Phase 1",
+      st.batch || "2083 BS",
+      st.scores.participation,
+      st.scores.homework,
+      st.scores.mcq,
+      st.scores.project,
+      st.scores.lab
+    ]);
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => row.map(val => {
+        const str = String(val);
+        if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      }).join(","))
+    ].join("\n");
+
+    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const classTag = classFilter === "all" ? "All_Classes" : classFilter.replace(/\s+/g, "_");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `EduGrade_Marks_Template_${classTag}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    triggerStatus(`🎉 Downloaded CSV template with ${filteredStudents.length} student listings!`);
+  };
+
+  const handleCSVUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        if (!text) return;
+
+        const lines = text.split(/\r?\n/);
+        if (lines.length < 2) {
+          triggerStatus("❌ Error: Invalid CSV file or template format.");
+          return;
+        }
+
+        // Parse headers
+        const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, "").toLowerCase());
+        
+        const idIdx = headers.findIndex(h => h.includes("student id") || h === "id");
+        const partIdx = headers.findIndex(h => h.includes("participation"));
+        const hwIdx = headers.findIndex(h => h.includes("homework"));
+        const mcqIdx = headers.findIndex(h => h.includes("mcq"));
+        const projIdx = headers.findIndex(h => h.includes("project"));
+        const labIdx = headers.findIndex(h => h.includes("lab"));
+        const rollIdx = headers.findIndex(h => h.includes("roll"));
+        const phaseIdx = headers.findIndex(h => h.includes("phase"));
+        const batchIdx = headers.findIndex(h => h.includes("batch"));
+
+        if (idIdx === -1) {
+          triggerStatus("❌ Error: 'Student ID' column is missing from the CSV.");
+          return;
+        }
+
+        let updatedCount = 0;
+        const updatedStudents = [...students];
+
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+
+          // Split line respecting commas inside double quotes
+          const columns: string[] = [];
+          let curVal = "";
+          let inQuotes = false;
+          for (let j = 0; j < line.length; j++) {
+            const char = line[j];
+            if (char === '"') {
+              inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+              columns.push(curVal.trim().replace(/^"|"$/g, ""));
+              curVal = "";
+            } else {
+              curVal += char;
+            }
+          }
+          columns.push(curVal.trim().replace(/^"|"$/g, ""));
+
+          if (columns.length < 1) continue;
+
+          const studentId = columns[idIdx];
+          if (!studentId) continue;
+
+          const studentIndex = updatedStudents.findIndex(s => s.id === studentId);
+          if (studentIndex !== -1) {
+            const s = { ...updatedStudents[studentIndex] };
+            s.scores = { ...s.scores };
+
+            // Apply clamped grade updates
+            if (partIdx !== -1 && columns[partIdx] !== undefined && columns[partIdx] !== "") {
+              const val = parseInt(columns[partIdx]) || 0;
+              s.scores.participation = Math.max(0, Math.min(10, val));
+            }
+            if (hwIdx !== -1 && columns[hwIdx] !== undefined && columns[hwIdx] !== "") {
+              const val = parseInt(columns[hwIdx]) || 0;
+              s.scores.homework = Math.max(0, Math.min(10, val));
+            }
+            if (mcqIdx !== -1 && columns[mcqIdx] !== undefined && columns[mcqIdx] !== "") {
+              const val = parseInt(columns[mcqIdx]) || 0;
+              s.scores.mcq = Math.max(0, Math.min(30, val));
+            }
+            if (projIdx !== -1 && columns[projIdx] !== undefined && columns[projIdx] !== "") {
+              const val = parseInt(columns[projIdx]) || 0;
+              s.scores.project = Math.max(0, Math.min(30, val));
+            }
+            if (labIdx !== -1 && columns[labIdx] !== undefined && columns[labIdx] !== "") {
+              const val = parseInt(columns[labIdx]) || 0;
+              s.scores.lab = Math.max(0, Math.min(20, val));
+            }
+            
+            // Apply student meta if provided
+            if (rollIdx !== -1 && columns[rollIdx] !== undefined && columns[rollIdx] !== "") {
+              s.rollNo = columns[rollIdx];
+            }
+            if (phaseIdx !== -1 && columns[phaseIdx] !== undefined && columns[phaseIdx] !== "") {
+              s.phase = columns[phaseIdx];
+            }
+            if (batchIdx !== -1 && columns[batchIdx] !== undefined && columns[batchIdx] !== "") {
+              s.batch = columns[batchIdx];
+            }
+
+            updatedStudents[studentIndex] = s;
+            updatedCount++;
+          }
+        }
+
+        if (updatedCount > 0) {
+          setStudents(updatedStudents);
+          setHasUnsaved(true);
+          triggerStatus(`🎉 Success: Parsed template and updated marks for ${updatedCount} students!`);
+        } else {
+          triggerStatus("⚠️ CSV parsing done, but matched zero active student records.");
+        }
+      } catch (err) {
+        console.error(err);
+        triggerStatus("❌ Error: Failed to parse uploaded file. Please verify CSV encoding.");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const downloadBulkZip = async () => {
+    if (filteredStudents.length === 0) {
+      triggerStatus("⚠️ No matching student records found for the current filters.");
+      return;
+    }
+
+    triggerStatus(`📦 Preparing Bulk ZIP compiler for ${filteredStudents.length} students...`);
+    setIsPdfExporting(true);
+
+    try {
+      const JSZip = (await import("jszip")).default;
+      const zip = new JSZip();
+
+      const getHtml2Pdf = () => {
+        if (typeof window === "undefined") return null;
+        if (typeof html2pdf === "function") return html2pdf;
+        if (html2pdf && typeof (html2pdf as any).default === "function") {
+          return (html2pdf as any).default;
+        }
+        if (typeof (window as any).html2pdf === "function") {
+          return (window as any).html2pdf;
+        }
+        return null;
+      };
+
+      const exporter = getHtml2Pdf();
+      if (!exporter) {
+        throw new Error("Unable to resolve PDF exporter library.");
+      }
+
+      const helperContainer = document.createElement("div");
+      helperContainer.style.position = "absolute";
+      helperContainer.style.left = "-9999px";
+      helperContainer.style.top = "0";
+      helperContainer.style.width = "210mm";
+      document.body.appendChild(helperContainer);
+
+      for (let i = 0; i < filteredStudents.length; i++) {
+        const student = filteredStudents[i];
+        triggerStatus(`🔄 Compiling transcript PDF ${i + 1}/${filteredStudents.length}: ${student.name}...`);
+
+        const totalScore = calculateTotalScore(student.scores);
+        const letterGrade = percentageToLetterGrade(totalScore);
+        const isPassed = totalScore >= 35;
+
+        helperContainer.innerHTML = `
+          <div 
+            class="pdf-compile-canvas"
+            style="
+              width: 210mm !important;
+              height: 297mm !important;
+              padding: 10mm 15mm 10mm 15mm !important;
+              box-sizing: border-box !important;
+              background-color: #ffffff !important;
+              color: #0f172a !important;
+              font-family: Inter, ui-sans-serif, system-ui, sans-serif !important;
+              display: flex !important;
+              flex-direction: column !important;
+              justify-content: space-between !important;
+            "
+          >
+            <div style="border-bottom: 2px solid #0f172a; padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+              <div style="width: 145mm;">
+                <h1 style="margin:0; font-size: 18px; font-weight: 900; color: #0f172a; text-transform: uppercase;">${schoolName}</h1>
+                ${schoolMotto ? `<p style="margin: 2px 0 0 0; font-size: 9px; color: #64748b; font-style: italic;">${schoolMotto}</p>` : ''}
+              </div>
+              <div style="text-align: right;">
+                <h2 style="margin: 0; font-size: 15px; font-weight: 950; color: #0f172a; text-transform: uppercase;">Evaluation Report</h2>
+                <p style="margin: 2px 0 0 0; font-size: 8.5px; font-weight: bold; color: #64748b; font-family: monospace; text-transform: uppercase;">Subject: Computer Science</p>
+              </div>
+            </div>
+
+            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 8px; font-size: 10.5px;">
+              <div>
+                <span style="font-size: 7.5px; text-transform: uppercase; font-weight: 800; color: #64748b;">Student Name</span>
+                <p style="margin: 2px 0 0 0; font-weight: 900; color: #0f172a; font-size: 11.5px;">${student.name}</p>
+              </div>
+              <div>
+                <span style="font-size: 7.5px; text-transform: uppercase; font-weight: 800; color: #64748b;">Roll Number</span>
+                <p style="margin: 2px 0 0 0; font-weight: 900; color: #1d4ed8; font-family: monospace; font-size: 11.5px;">${student.rollNo || "—"}</p>
+              </div>
+              <div>
+                <span style="font-size: 7.5px; text-transform: uppercase; font-weight: 800; color: #64748b;">Grade / Section</span>
+                <p style="margin: 2px 0 0 0; font-weight: bold; color: #334155;">${student.grade}</p>
+              </div>
+              <div>
+                <span style="font-size: 7.5px; text-transform: uppercase; font-weight: 800; color: #64748b;">Academic Batch</span>
+                <p style="margin: 2px 0 0 0; font-weight: 800; color: #334155;">${student.batch || "2083 BS"}</p>
+              </div>
+              <div>
+                <span style="font-size: 7.5px; text-transform: uppercase; font-weight: 800; color: #64748b;">Term / Phase</span>
+                <p style="margin: 2px 0 0 0; font-weight: bold; color: #334155;">${student.phase || "Phase 1"}</p>
+              </div>
+              <div>
+                <span style="font-size: 7.5px; text-transform: uppercase; font-weight: 800; color: #64748b;">Evaluation Date</span>
+                <p style="margin: 2px 0 0 0; font-family: monospace; color: #475569;">${student.date}</p>
+              </div>
+              <div style="grid-column: span 2; text-align: right; align-self: center;">
+                <span style="font-size: 7.5px; text-transform: uppercase; font-weight: 800; color: #64748b; margin-right: 6px;">Overall Grade</span>
+                <span style="font-family: monospace; background-color: #0f172a; color: #ffffff; padding: 2.5px 7px; border-radius: 4px; font-weight: 900; font-size: 11px;">${letterGrade}</span>
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 2.1fr 1fr; gap: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">
+              <div>
+                <h3 style="margin: 0 0 3px 0; font-size: 8px; font-weight: bold; text-transform: uppercase; color: #64748b;">Grade Scale Benchmark</h3>
+                <div style="display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; font-size: 7px; height: 32px;">
+                  <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; text-align: center; display: flex; flex-direction: column; justify-content: space-between; padding: 2px;">
+                    <strong style="font-size: 8.5px; font-weight: bold; color: #0f172a;">A+</strong>
+                    <span style="color: #64748b; font-family: monospace; font-size: 6px;">(90%+)</span>
+                  </div>
+                  <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; text-align: center; display: flex; flex-direction: column; justify-content: space-between; padding: 2px;">
+                    <strong style="font-size: 8.5px; font-weight: bold; color: #0f172a;">A</strong>
+                    <span style="color: #64748b; font-family: monospace; font-size: 6px;">(80-89)</span>
+                  </div>
+                  <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; text-align: center; display: flex; flex-direction: column; justify-content: space-between; padding: 2px;">
+                    <strong style="font-size: 8.5px; font-weight: bold; color: #0f172a;">B+</strong>
+                    <span style="color: #64748b; font-family: monospace; font-size: 6px;">(70-79)</span>
+                  </div>
+                  <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; text-align: center; display: flex; flex-direction: column; justify-content: space-between; padding: 2px;">
+                    <strong style="font-size: 8.5px; font-weight: bold; color: #0f172a;">B</strong>
+                    <span style="color: #64748b; font-family: monospace; font-size: 6px;">(60-69)</span>
+                  </div>
+                  <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; text-align: center; display: flex; flex-direction: column; justify-content: space-between; padding: 2px;">
+                    <strong style="font-size: 8.5px; font-weight: bold; color: #0f172a;">C+</strong>
+                    <span style="color: #64748b; font-family: monospace; font-size: 6px;">(50-59)</span>
+                  </div>
+                  <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; text-align: center; display: flex; flex-direction: column; justify-content: space-between; padding: 2px;">
+                    <strong style="font-size: 8.5px; font-weight: bold; color: #0f172a;">C</strong>
+                    <span style="color: #64748b; font-family: monospace; font-size: 6px;">(40-49)</span>
+                  </div>
+                  <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; text-align: center; display: flex; flex-direction: column; justify-content: space-between; padding: 2px;">
+                    <strong style="font-size: 8.5px; font-weight: bold; color: #0f172a;">D</strong>
+                    <span style="color: #64748b; font-family: monospace; font-size: 6px;">(35-39)</span>
+                  </div>
+                  <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; text-align: center; display: flex; flex-direction: column; justify-content: space-between; padding: 2px;">
+                    <strong style="font-size: 8.5px; font-weight: bold; color: #ef4444;">NG</strong>
+                    <span style="color: #ef4444; font-family: monospace; font-size: 6px;">(&lt;35)</span>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <h3 style="margin: 0 0 3px 0; font-size: 8px; font-weight: bold; text-transform: uppercase; color: #64748b;">Scale Guide</h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2px; font-size: 7px;">
+                  <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; padding: 1px 2px; display: flex; align-items: center; gap: 2px;">
+                    <span style="width: 10px; height: 10px; background-color:#0f172a; color:#fff; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:6px; font-weight:bold;">4</span>
+                    <span>Excellent</span>
+                  </div>
+                  <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; padding: 1px 2px; display: flex; align-items: center; gap: 2px;">
+                    <span style="width: 10px; height: 10px; background-color:#0f172a; color:#fff; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:6px; font-weight:bold;">3</span>
+                    <span>Very Good</span>
+                  </div>
+                  <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; padding: 1px 2px; display: flex; align-items: center; gap: 2px;">
+                    <span style="width: 10px; height: 10px; background-color:#0f172a; color:#fff; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:6px; font-weight:bold;">2</span>
+                    <span>Satisfactory</span>
+                  </div>
+                  <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; padding: 1px 2px; display: flex; align-items: center; gap: 2px;">
+                    <span style="width: 10px; height: 10px; background-color:#0f172a; color:#fff; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:6px; font-weight:bold;">1</span>
+                    <span>Basic</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <table style="width: 100%; text-align: left; border-collapse: collapse; font-size: 9.5px; margin: 4px 0;">
+              <thead>
+                <tr style="border-bottom: 1.5px solid #0f172a; background-color: #f8fafc; font-size: 7.5px; text-transform: uppercase; font-weight: bold; color: #475569;">
+                  <th style="padding: 4px 5px; width: 44%;">Component</th>
+                  <th style="padding: 4px 5px; text-align: center; width: 20%;">Rating</th>
+                  <th style="padding: 4px 5px; text-align: center; width: 14%;">Grade Scale</th>
+                  <th style="padding: 4px 5px; width: 22%;">Remarks</th>
+                </tr>
+              </thead>
+              <tbody style="color: #334155;">
+                ${Object.keys(COMPONENT_DETAILS).map((k) => {
+                  const key = k as ComponentKey;
+                  const comp = COMPONENT_DETAILS[key];
+                  const rawScore = student.scores[key] || 0;
+                  const pct = calculatePercentage(rawScore, comp.maxScore);
+                  const rating = percentageToRating(pct);
+                  const desc = student.afterSupport[key] || "Excellent";
+                  const remarks = student.remarks[key] || "Completed criteria.";
+                  
+                  return `
+                    <tr style="border-bottom: 1px solid #e2e8f0;">
+                      <td style="padding: 4px 5px;">
+                        <strong style="color: #0f172a; font-size: 9.5px; display: block;">${comp.name}</strong>
+                        <span style="font-size: 7.5px; color: #64748b; line-height:1.1;">${comp.description}</span>
+                      </td>
+                      <td style="padding: 4px 5px; text-align: center;">
+                        <div style="display: flex; justify-content: center; gap: 2px;">
+                          ${[1, 2, 3, 4].map(num => `
+                            <span style="
+                              width: 11px;
+                              height: 11px;
+                              border-radius: 50%;
+                              display: inline-flex;
+                              align-items: center;
+                              justify-content: center;
+                              font-size: 7.5px;
+                              box-sizing: border-box;
+                              ${num === rating ? "background-color: #0f172a; color: #ffffff; font-weight: bold;" : "background-color: transparent; color: #cbd5e1; border: 1px solid #cbd5e1;"}
+                            ">${num}</span>
+                          `).join("")}
+                        </div>
+                      </td>
+                      <td style="padding: 4px 5px; text-align: center; font-weight: bold; font-size: 8px;">
+                        <span style="background-color: #f1f5f9; padding: 1px 3px; border-radius: 3px;">${desc}</span>
+                      </td>
+                      <td style="padding: 4px 5px; font-size: 8px; font-style: italic; color: #475569; line-height: 1.1;">${remarks}</td>
+                    </tr>
+                  `;
+                }).join("")}
+              </tbody>
+            </table>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 4px 0;">
+              <div style="border: 1px solid #e2e8f0; border-radius: 6px; padding: 5px 8px; background-color: #fafcfb;">
+                <h4 style="margin: 0 0 2px 0; font-size: 8px; font-weight: bold; text-transform: uppercase; color: #1e3a8a;">Strengths</h4>
+                <p style="margin: 0; font-size: 8px; line-height: 1.3; font-style: italic; color: #334155;">${student.strengths || "Demonstrates strong understanding."}</p>
+              </div>
+              <div style="border: 1px solid #e2e8f0; border-radius: 6px; padding: 5px 8px; background-color: #fafcfb;">
+                <h4 style="margin: 0 0 2px 0; font-size: 8px; font-weight: bold; text-transform: uppercase; color: #1e3a8a;">Areas of Growth</h4>
+                <p style="margin: 0; font-size: 8px; line-height: 1.3; font-style: italic; color: #334155;">${student.areasOfImprovement || "Regular focus training recommended."}</p>
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; border: 1px solid #e2e8f0; background: #f8fafc; padding: 5px 8px; border-radius: 6px; font-size: 9.5px; margin: 4px 0;">
+              <div>
+                <span style="font-weight: bold; font-size: 7.5px; color: #475569; text-transform: uppercase;">Overall standing</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-family: monospace; background: #f1f5f9; padding: 1.5px 4px; border-radius: 4px; font-weight: bold;">Score: ${totalScore}%</span>
+                <strong style="color: ${isPassed ? '#15803d' : '#b91c1c'}; font-size: 8.5px; text-transform: uppercase;">${isPassed ? 'PASSED ✅' : 'FAILED ❌'}</strong>
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; font-size: 8.5px; border-top: 1px solid #cbd5e1; padding-top: 5px; margin-top: auto;">
+              <div>
+                <span style="font-size: 7px; text-transform: uppercase; font-weight: bold; color: #94a3b8; display: block;">Evaluator Signature</span>
+                <div style="border-bottom: 1px solid #cbd5e1; height: 14px; margin-top: 1px;"></div>
+                <p style="margin: 2px 0 0 0; font-weight: bold;">Mr. Sudeep Shrestha (Teacher)</p>
+                <p style="margin: 0; color: #64748b; font-size: 7.5px;">Date: <span style="font-family: monospace; font-weight: bold; color: #0f172a;">${student.date}</span></p>
+              </div>
+              <div>
+                <span style="font-size: 7px; text-transform: uppercase; font-weight: bold; color: #94a3b8; display: block;">Parent Signature</span>
+                <div style="border-bottom: 1px solid #cbd5e1; height: 14px; margin-top: 1px;"></div>
+                <p style="margin: 3px 0 0 0; color: #64748b; font-size: 7.5px;">Date Checked: __________________</p>
+              </div>
+            </div>
+          </div>
+        `;
+
+        const opt = {
+          margin:       0,
+          filename:     `${filenameClean}.pdf`,
+          image:        { type: "jpeg", quality: 0.98 },
+          html2canvas:  { 
+            scale: 2.0, 
+            useCORS: true, 
+            letterRendering: true,
+            logging: false,
+            backgroundColor: "#ffffff"
+          },
+          jsPDF:        { unit: "mm", format: "a4", orientation: "portrait" }
+        };
+
+        const pdfBlob = await exporter().set(opt).from(helperContainer.firstElementChild).output('blob');
+        zip.file(`${filenameClean}.pdf`, pdfBlob);
+      }
+
+      // Cleanup
+      document.body.removeChild(helperContainer);
+
+      triggerStatus("📂 Bundling compiled transcripts into target ZIP archive...");
+      const content = await zip.generateAsync({ type: "blob" });
+
+      const classFilterStr = classFilter === "all" ? "All_Classes" : classFilter.replace(/\s+/g, "_");
+      const batchFilterStr = batchFilter === "all" ? "All_Batches" : batchFilter.replace(/\s+/g, "_");
+      const phaseFilterStr = phaseFilter === "all" ? "All_Phases" : phaseFilter.replace(/\s+/g, "_");
+      const zipName = `EduGrade_Transcripts_${classFilterStr}_${batchFilterStr}_${phaseFilterStr}.zip`;
+
+      const blobUrl = URL.createObjectURL(content);
+      const downloadLink = document.createElement("a");
+      downloadLink.href = blobUrl;
+      downloadLink.download = zipName;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+
+      triggerStatus(`🎉 Success! Downloaded "${zipName}" containing ${filteredStudents.length} report cards bulk exported at once!`);
+    } catch (err: any) {
+      console.error("Bulk Zip Creation Error:", err);
+      triggerStatus(`❌ Bulk zip creation failed: ${err.message || err}`);
+    } finally {
+      setIsPdfExporting(false);
+    }
+  };
+
   const printReport = (mode: "print" | "download" = "print") => {
     if (!activeStudent) return;
     
-    // Save latest state to localStorage so the preview tab reads the most up-to-date inputs
+    if (mode === "download") {
+      // Trigger superior direct client download to bypass sandbox popup blockers
+      downloadSinglePDFDirectly(activeStudent);
+      return;
+    }
+
+    // Otherwise standard print dialog
     try {
       localStorage.setItem("edugrade_students", JSON.stringify(students));
     } catch (e) {
       console.error("Local storage save error:", e);
     }
     
-    // Construct preview URL targeting our un-sandboxed print route
     const url = `/print-preview/${activeStudent.id}?mode=${mode}`;
-    
-    triggerStatus(`Spawning high-fidelity tab to print/download ${activeStudent.name}'s report...`);
-    
-    // Open in separate browser context (bypasses iframe sandboxing completely)
+    triggerStatus(`Launching printing container for ${activeStudent.name}...`);
     window.open(url, "_blank");
   };
 
@@ -1627,6 +2173,68 @@ export default function App() {
               </div>
             </div>
 
+            {/* Premium Bulk Action Suite */}
+            <div className="mb-3 bg-slate-50 border border-slate-200/80 rounded-xl p-3 space-y-3">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                ⚙️ Class-Level Bulk Tools (Active Filter Mode)
+              </span>
+              
+              {/* Importer Section */}
+              <div className="space-y-2 border-t border-slate-200/60 pt-2 bg-white/40 p-2 rounded-lg border border-dashed border-slate-200">
+                <span className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wide block">
+                  📥 Bulk Marks Importer (Excel/CSV)
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={downloadCSVTemplate}
+                    className="flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 border-b-2 border-slate-300 text-slate-75 * text-slate-700 font-bold text-[10.5px] py-1.5 px-2.5 rounded-lg border border-slate-200/80 transition cursor-pointer shadow-sm whitespace-nowrap"
+                    title="Download clean CSV template pre-populated with currently filtered students names/IDs/scores"
+                  >
+                    <Download className="h-3 w-3 text-slate-500 shrink-0" />
+                    <span>Download format</span>
+                  </button>
+                  
+                  <label
+                    className="flex items-center justify-center gap-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[10.5px] py-1.5 px-2 rounded-lg border border-blue-200 border-b-2 border-blue-300 transition cursor-pointer shadow-sm text-center whitespace-nowrap"
+                    title="Upload edited CSV to synchronize marks at once"
+                  >
+                    <Upload className="h-3 w-3 text-blue-600 shrink-0" />
+                    <span>Upload CSV</span>
+                    <input
+                      type="file"
+                      accept=".csv"
+                      className="hidden"
+                      onChange={handleCSVUpload}
+                    />
+                  </label>
+                </div>
+                <p className="text-[9px] text-slate-400 leading-tight">
+                  * Pre-fills active classroom roster. Edit scores in Excel, then upload file.
+                </p>
+              </div>
+
+              {/* Bulk Exports Section */}
+              <div className="space-y-2 pt-1 border-t border-slate-200/60">
+                <span className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wide block">
+                  📦 Compiled ZIP Reports Archive
+                </span>
+                <button
+                  type="button"
+                  onClick={downloadBulkZip}
+                  disabled={isPdfExporting || filteredStudents.length === 0}
+                  className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-extrabold text-[11px] py-2 px-3 rounded-lg border-b-2 border-emerald-800 shadow cursor-pointer transition active:scale-[0.98]"
+                  title="Generate, bundle and export high-fidelity individual report card PDFs for all currently filtered students into a single ZIP"
+                >
+                  <FolderArchive className="h-3.5 w-3.5" />
+                  <span>Download reports of Class (${filteredStudents.length}) in ZIP</span>
+                </button>
+                <p className="text-[9px] text-slate-400 leading-tight">
+                  * Generates PDF report cards of students based on active class, batch and phase filters.
+                </p>
+              </div>
+            </div>
+
             {/* Workplace Selector Switch */}
             <div className="inline-flex w-full bg-slate-105 p-1 rounded-xl border border-slate-200 mt-1">
               <button
@@ -1760,7 +2368,15 @@ export default function App() {
                                 max="10"
                                 value={st.scores.participation}
                                 onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "participation")}
-                                onChange={(e) => handleScoreChangeInList(st.id, "participation", parseInt(e.target.value) || 0)}
+                                onFocus={(e) => e.target.select()}
+                                onChange={(e) => {
+                                  let valStr = e.target.value;
+                                  if (/^0[0-9]+/.test(valStr)) {
+                                    valStr = valStr.replace(/^0+/, "") || "0";
+                                    e.target.value = valStr;
+                                  }
+                                  handleScoreChangeInList(st.id, "participation", parseInt(valStr) || 0);
+                                }}
                                 className="w-10 text-center font-mono font-bold bg-slate-50 border border-slate-200 rounded py-0.5 text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-none text-[11px]"
                               />
                             </td>
@@ -1772,7 +2388,15 @@ export default function App() {
                                 max="10"
                                 value={st.scores.homework}
                                 onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "homework")}
-                                onChange={(e) => handleScoreChangeInList(st.id, "homework", parseInt(e.target.value) || 0)}
+                                onFocus={(e) => e.target.select()}
+                                onChange={(e) => {
+                                  let valStr = e.target.value;
+                                  if (/^0[0-9]+/.test(valStr)) {
+                                    valStr = valStr.replace(/^0+/, "") || "0";
+                                    e.target.value = valStr;
+                                  }
+                                  handleScoreChangeInList(st.id, "homework", parseInt(valStr) || 0);
+                                }}
                                 className="w-10 text-center font-mono font-bold bg-slate-50 border border-slate-200 rounded py-0.5 text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-none text-[11px]"
                               />
                             </td>
@@ -1784,7 +2408,15 @@ export default function App() {
                                 max="30"
                                 value={st.scores.mcq}
                                 onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "mcq")}
-                                onChange={(e) => handleScoreChangeInList(st.id, "mcq", parseInt(e.target.value) || 0)}
+                                onFocus={(e) => e.target.select()}
+                                onChange={(e) => {
+                                  let valStr = e.target.value;
+                                  if (/^0[0-9]+/.test(valStr)) {
+                                    valStr = valStr.replace(/^0+/, "") || "0";
+                                    e.target.value = valStr;
+                                  }
+                                  handleScoreChangeInList(st.id, "mcq", parseInt(valStr) || 0);
+                                }}
                                 className="w-11 text-center font-mono font-bold bg-slate-50 border border-slate-200 rounded py-0.5 text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-none text-[11px]"
                               />
                             </td>
@@ -1796,7 +2428,15 @@ export default function App() {
                                 max="30"
                                 value={st.scores.project}
                                 onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "project")}
-                                onChange={(e) => handleScoreChangeInList(st.id, "project", parseInt(e.target.value) || 0)}
+                                onFocus={(e) => e.target.select()}
+                                onChange={(e) => {
+                                  let valStr = e.target.value;
+                                  if (/^0[0-9]+/.test(valStr)) {
+                                    valStr = valStr.replace(/^0+/, "") || "0";
+                                    e.target.value = valStr;
+                                  }
+                                  handleScoreChangeInList(st.id, "project", parseInt(valStr) || 0);
+                                }}
                                 className="w-11 text-center font-mono font-bold bg-slate-50 border border-slate-200 rounded py-0.5 text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-none text-[11px]"
                               />
                             </td>
@@ -1808,7 +2448,15 @@ export default function App() {
                                 max="20"
                                 value={st.scores.lab}
                                 onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "lab")}
-                                onChange={(e) => handleScoreChangeInList(st.id, "lab", parseInt(e.target.value) || 0)}
+                                onFocus={(e) => e.target.select()}
+                                onChange={(e) => {
+                                  let valStr = e.target.value;
+                                  if (/^0[0-9]+/.test(valStr)) {
+                                    valStr = valStr.replace(/^0+/, "") || "0";
+                                    e.target.value = valStr;
+                                  }
+                                  handleScoreChangeInList(st.id, "lab", parseInt(valStr) || 0);
+                                }}
                                 className="w-11 text-center font-mono font-bold bg-slate-50 border border-slate-200 rounded py-0.5 text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-none text-[11px]"
                               />
                             </td>

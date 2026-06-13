@@ -37,6 +37,19 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
       return;
     }
 
+    // Dynamic resolver to catch varying module export formats in ESM / CommonJS bundlers
+    const getHtml2Pdf = () => {
+      if (typeof window === "undefined") return null;
+      if (typeof html2pdf === "function") return html2pdf;
+      if (html2pdf && typeof (html2pdf as any).default === "function") {
+        return (html2pdf as any).default;
+      }
+      if (typeof (window as any).html2pdf === "function") {
+        return (window as any).html2pdf;
+      }
+      return null;
+    };
+
     // Give time for layout calculations, font loading, etc.
     const timer = setTimeout(async () => {
       const element = document.getElementById("printable-report-card");
@@ -69,13 +82,17 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
         };
 
         try {
-          // Trigger html2pdf with ESM package directly
-          await html2pdf().set(opt).from(element).save();
+          const exporter = getHtml2Pdf();
+          if (!exporter) {
+            throw new Error("Unable to resolve html2pdf module or global namespace.");
+          }
+          // Trigger html2pdf securely
+          await exporter().set(opt).from(element).save();
           setStatus(`Successfully downloaded: "${filenameClean}.pdf"!`);
           setIsCompleted(true);
         } catch (err: any) {
           console.error("Direct html2pdf error:", err);
-          setErrorMsg("PDF generation blocked or failed. Please use 'Ctrl + P' / standard Print and choose 'Save as PDF' as destination.");
+          setErrorMsg(`PDF generation failed: ${err.message || err}. Please press 'Ctrl + P' (or Cmd + P) and set destination as 'Save as PDF' to save high-fidelity transcripts.`);
         }
       } else {
         setStatus(`Opening system print controls for ${student.name}...`);
@@ -224,7 +241,7 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
           gap: 12px !important;
           box-sizing: border-box !important;
           background-color: #ffffff !important;
-        } }
+        }
       `}</style>
 
       {/* Action Progress Controller (Hidden on paper) */}
