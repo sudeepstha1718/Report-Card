@@ -12,6 +12,86 @@ import {
 // @ts-ignore
 import html2pdf from "html2pdf.js";
 
+const loadHtml2Pdf = (): Promise<any> => {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined") {
+      resolve(null);
+      return;
+    }
+    if (typeof html2pdf === "function") {
+      resolve(html2pdf);
+      return;
+    }
+    if (html2pdf && typeof (html2pdf as any).default === "function") {
+      resolve((html2pdf as any).default);
+      return;
+    }
+    if (typeof (window as any).html2pdf === "function") {
+      resolve((window as any).html2pdf);
+      return;
+    }
+
+    const existing = document.querySelector('script[src*="html2pdf.bundle.min.js"]');
+    if (existing) {
+      let checkCount = 0;
+      const interval = setInterval(() => {
+        checkCount++;
+        if (typeof (window as any).html2pdf === "function") {
+          clearInterval(interval);
+          resolve((window as any).html2pdf);
+        } else if (checkCount > 100) {
+          clearInterval(interval);
+          resolve(null);
+        }
+      }, 50);
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+    script.crossOrigin = "anonymous";
+    script.onload = () => {
+      resolve((window as any).html2pdf);
+    };
+    script.onerror = () => {
+      console.error("Failed to load html2pdf from CDN");
+      resolve(null);
+    };
+    document.head.appendChild(script);
+  });
+};
+
+const cleanOklchStylesheets = async (): Promise<() => void> => {
+  if (typeof document === "undefined") return () => {};
+  
+  const styleElements = Array.from(document.querySelectorAll("style"));
+  const backups: { element: any; content?: string }[] = [];
+  
+  // Robust regex allowing 1 level of nested parentheses (e.g. var(...)) inside oklch/oklab
+  const oklchRegex = /oklch\((?:[^()]+|\([^()]*\))*\)/g;
+  const oklabRegex = /oklab\((?:[^()]+|\([^()]*\))*\)/g;
+  
+  for (const style of styleElements) {
+    if (style.textContent && (style.textContent.includes("oklch") || style.textContent.includes("oklab"))) {
+      backups.push({ element: style, content: style.textContent });
+      let cleaned = style.textContent;
+      
+      cleaned = cleaned.replace(oklchRegex, "#4b5563");
+      cleaned = cleaned.replace(oklabRegex, "#4b5563");
+      
+      style.textContent = cleaned;
+    }
+  }
+  
+  return () => {
+    for (const backup of backups) {
+      if (backup.content !== undefined) {
+        backup.element.textContent = backup.content;
+      }
+    }
+  };
+};
+
 interface PrintPreviewPageProps {
   student: StudentRecord | undefined;
   mode: "print" | "download";
@@ -36,19 +116,6 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
       setErrorMsg("Student record not found. Please choose an active student from the roster.");
       return;
     }
-
-    // Dynamic resolver to catch varying module export formats in ESM / CommonJS bundlers
-    const getHtml2Pdf = () => {
-      if (typeof window === "undefined") return null;
-      if (typeof html2pdf === "function") return html2pdf;
-      if (html2pdf && typeof (html2pdf as any).default === "function") {
-        return (html2pdf as any).default;
-      }
-      if (typeof (window as any).html2pdf === "function") {
-        return (window as any).html2pdf;
-      }
-      return null;
-    };
 
     // Give time for layout calculations, font loading, etc.
     const timer = setTimeout(async () => {
@@ -81,8 +148,10 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
           jsPDF:        { unit: "mm" as const, format: "a4" as const, orientation: "portrait" as const }
         };
 
+        let restoreStyles = () => {};
         try {
-          const exporter = getHtml2Pdf();
+          restoreStyles = await cleanOklchStylesheets();
+          const exporter = await loadHtml2Pdf();
           if (!exporter) {
             throw new Error("Unable to resolve html2pdf module or global namespace.");
           }
@@ -93,6 +162,8 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
         } catch (err: any) {
           console.error("Direct html2pdf error:", err);
           setErrorMsg(`PDF generation failed: ${err.message || err}. Please press 'Ctrl + P' (or Cmd + P) and set destination as 'Save as PDF' to save high-fidelity transcripts.`);
+        } finally {
+          restoreStyles();
         }
       } else {
         setStatus(`Opening system print controls for ${student.name}...`);
@@ -408,7 +479,7 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-[10.5px]">
             <thead>
-              <tr className="border-b border-slate-350 text-slate-700 uppercase font-bold text-[8px] tracking-widest bg-slate-50/50">
+              <tr className="border-b border-slate-350 text-slate-700 uppercase font-bold text-[8px] tracking-widest bg-slate-50">
                 <th className="py-2 px-2.5 w-5/12">Grading Area Component</th>
                 <th className="py-2 px-2 text-center w-2/12">Rating</th>
                 <th className="py-2 px-2 text-center w-2/12">Evaluation Scale</th>
@@ -466,7 +537,7 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
 
         {/* Growth and Remarks block */}
         <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-200">
-          <div className="border border-slate-200 rounded-lg p-2.5 space-y-0.5 bg-slate-50/20">
+          <div className="border border-slate-200 rounded-lg p-2.5 space-y-0.5 bg-slate-50">
             <h4 className="font-bold uppercase tracking-wide text-blue-600 text-[8.5px] flex items-center gap-1">
               <span className="w-1.2 h-1.2 rounded-full bg-blue-500" />
               Student Computing Strengths
@@ -476,7 +547,7 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
             </p>
           </div>
 
-          <div className="border border-slate-200 rounded-lg p-2.5 space-y-0.5 bg-slate-50/20">
+          <div className="border border-slate-200 rounded-lg p-2.5 space-y-0.5 bg-slate-50">
             <h4 className="font-bold uppercase tracking-wide text-blue-600 text-[8.5px] flex items-center gap-1">
               <span className="w-1.2 h-1.2 rounded-full bg-blue-400" />
               Areas of Growth & Next Steps

@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
@@ -128,7 +129,35 @@ Provide your output as parsed JSON with exactly these two keys:
       appType: "spa",
     });
     app.use(vite.middlewares);
-    console.log("Vite development server middleware loaded.");
+    
+    // Serve index.html transformed with Vite for any non-API route in dev
+    app.get("*", async (req, res, next) => {
+      if (req.path.startsWith("/api/")) {
+        return next();
+      }
+      if (req.method !== "GET") {
+        return next();
+      }
+      
+      const ext = path.extname(req.path);
+      if (ext && ext !== ".html") {
+        return next();
+      }
+
+      const url = req.originalUrl;
+      try {
+        const templatePath = path.resolve(process.cwd(), "index.html");
+        let template = await fs.promises.readFile(templatePath, "utf-8");
+        // Transform template through Vite's HTML transform plugin chain
+        template = await vite.transformIndexHtml(url, template);
+        res.status(200).set({ "Content-Type": "text/html" }).end(template);
+      } catch (e) {
+        vite.ssrFixStacktrace(e as Error);
+        next(e);
+      }
+    });
+
+    console.log("Vite development server middleware & fallbacks loaded.");
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));

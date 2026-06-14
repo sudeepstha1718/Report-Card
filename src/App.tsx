@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
   GraduationCap, 
   Plus, 
@@ -47,6 +47,140 @@ import { PrintPreviewPage } from "./components/PrintPreviewPage";
 import { SchoolLogo } from "./components/SchoolLogo";
 import { BrandingSettings } from "./components/BrandingSettings";
 import { CLASS_3_STUDENTS } from "./class3Data";
+
+const loadHtml2Pdf = (): Promise<any> => {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined") {
+      resolve(null);
+      return;
+    }
+    if (typeof html2pdf === "function") {
+      resolve(html2pdf);
+      return;
+    }
+    if (html2pdf && typeof (html2pdf as any).default === "function") {
+      resolve((html2pdf as any).default);
+      return;
+    }
+    if (typeof (window as any).html2pdf === "function") {
+      resolve((window as any).html2pdf);
+      return;
+    }
+
+    const existing = document.querySelector('script[src*="html2pdf.bundle.min.js"]');
+    if (existing) {
+      let checkCount = 0;
+      const interval = setInterval(() => {
+        checkCount++;
+        if (typeof (window as any).html2pdf === "function") {
+          clearInterval(interval);
+          resolve((window as any).html2pdf);
+        } else if (checkCount > 100) {
+          clearInterval(interval);
+          resolve(null);
+        }
+      }, 50);
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+    script.crossOrigin = "anonymous";
+    script.onload = () => {
+      resolve((window as any).html2pdf);
+    };
+    script.onerror = () => {
+      console.error("Failed to load html2pdf from CDN");
+      resolve(null);
+    };
+    document.head.appendChild(script);
+  });
+};
+
+const cleanOklchStylesheets = async (): Promise<() => void> => {
+  if (typeof document === "undefined") return () => {};
+  
+  const styleElements = Array.from(document.querySelectorAll("style"));
+  const backups: { element: any; content?: string }[] = [];
+  
+  // Robust regex allowing 1 level of nested parentheses (e.g. var(...)) inside oklch/oklab
+  const oklchRegex = /oklch\((?:[^()]+|\([^()]*\))*\)/g;
+  const oklabRegex = /oklab\((?:[^()]+|\([^()]*\))*\)/g;
+  
+  // Clean inline styles injected by Vite/Tailwind
+  for (const style of styleElements) {
+    if (style.textContent && (style.textContent.includes("oklch") || style.textContent.includes("oklab"))) {
+      backups.push({ element: style, content: style.textContent });
+      let cleaned = style.textContent;
+      
+      // Replace oklch(...) and oklab(...) with safe gray-600 color to avoid html2canvas CSS parsing failures
+      cleaned = cleaned.replace(oklchRegex, "#4b5563");
+      cleaned = cleaned.replace(oklabRegex, "#4b5563");
+      
+      style.textContent = cleaned;
+    }
+  }
+  
+  return () => {
+    for (const backup of backups) {
+      if (backup.content !== undefined) {
+        backup.element.textContent = backup.content;
+      }
+    }
+  };
+};
+
+const loadJSZip = (): Promise<any> => {
+  return new Promise(async (resolve) => {
+    if (typeof window === "undefined") {
+      resolve(null);
+      return;
+    }
+    try {
+      const mod = await import("jszip");
+      const lib = mod.default || mod;
+      if (typeof lib === "function" || (lib && typeof (lib as any).JSZip === "function")) {
+        resolve(lib);
+        return;
+      }
+    } catch (e) {
+      console.error("Local JSZip load failed, using fallback:", e);
+    }
+
+    if (typeof (window as any).JSZip === "function") {
+      resolve((window as any).JSZip);
+      return;
+    }
+
+    const existing = document.querySelector('script[src*="jszip.min.js"]');
+    if (existing) {
+      let checkCount = 0;
+      const interval = setInterval(() => {
+        checkCount++;
+        if (typeof (window as any).JSZip === "function") {
+          clearInterval(interval);
+          resolve((window as any).JSZip);
+        } else if (checkCount > 100) {
+          clearInterval(interval);
+          resolve(null);
+        }
+      }, 50);
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
+    script.crossOrigin = "anonymous";
+    script.onload = () => {
+      resolve((window as any).JSZip);
+    };
+    script.onerror = () => {
+      console.error("Failed to load JSZip from CDN");
+      resolve(null);
+    };
+    document.head.appendChild(script);
+  });
+};
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
@@ -332,9 +466,16 @@ export default function App() {
     }
   }, []);
 
+  const statusTimeoutRef = useRef<any>(null);
+
   const triggerStatus = (msg: string) => {
+    if (statusTimeoutRef.current) {
+      clearTimeout(statusTimeoutRef.current);
+    }
     setStatusMessage(msg);
-    setTimeout(() => setStatusMessage(""), 4000);
+    statusTimeoutRef.current = setTimeout(() => {
+      setStatusMessage("");
+    }, 4000);
   };
 
   const handleManualSaveAll = (customMsg?: string) => {
@@ -737,67 +878,6 @@ export default function App() {
     triggerStatus("Class ledger Excel sheet generated successfully!");
   };
 
-  const downloadSinglePDFDirectly = async (studentToPrint: StudentRecord) => {
-    setIsPdfExporting(true);
-    triggerStatus(`Generating in-app high-fidelity PDF for ${studentToPrint.name}...`);
-    
-    setTimeout(async () => {
-      const element = document.getElementById("printable-report-card");
-      if (!element) {
-        setIsPdfExporting(false);
-        triggerStatus("❌ Error: printable-report-card container not found.");
-        return;
-      }
-      
-      const phaseRaw = studentToPrint.phase || "Phase 1";
-      const phaseStr = phaseRaw.toLowerCase().replace(/\s+/g, "").replace("phase", "ph");
-      const rollStr = studentToPrint.rollNo || "—";
-      const filenameClean = `${studentToPrint.name}-${phaseStr}-${studentToPrint.grade}-${rollStr}`.replace(/[\/\\:*?"<>|]/g, "_");
-      
-      const opt = {
-        margin:       0,
-        filename:     `${filenameClean}.pdf`,
-        image:        { type: "jpeg", quality: 0.98 },
-        html2canvas:  { 
-          scale: 2.2, 
-          useCORS: true, 
-          letterRendering: true,
-          logging: false,
-          backgroundColor: "#ffffff"
-        },
-        jsPDF:        { unit: "mm", format: "a4", orientation: "portrait" }
-      };
-
-      const getHtml2Pdf = () => {
-        if (typeof window === "undefined") return null;
-        if (typeof html2pdf === "function") return html2pdf;
-        if (html2pdf && typeof (html2pdf as any).default === "function") {
-          return (html2pdf as any).default;
-        }
-        if (typeof (window as any).html2pdf === "function") {
-          return (window as any).html2pdf;
-        }
-        return null;
-      };
-
-      try {
-        const exporter = getHtml2Pdf();
-        if (!exporter) {
-          throw new Error("Unable to resolve PDF exporter library.");
-        }
-        await exporter().set(opt).from(element).save();
-        triggerStatus(`🎉 Success: Downloaded "${filenameClean}.pdf"!`);
-      } catch (err: any) {
-        console.error("Direct PDF Error, falling back to window:", err);
-        const url = `/print-preview/${studentToPrint.id}?mode=download`;
-        window.open(url, "_blank");
-        triggerStatus("Spawning print-preview popup (direct save failed).");
-      } finally {
-        setIsPdfExporting(false);
-      }
-    }, 450);
-  };
-
   const downloadCSVTemplate = () => {
     const headers = [
       "Student ID",
@@ -984,22 +1064,13 @@ export default function App() {
     setIsPdfExporting(true);
 
     try {
-      const JSZip = (await import("jszip")).default;
-      const zip = new JSZip();
+      const JSZipLib = await loadJSZip();
+      if (!JSZipLib) {
+        throw new Error("Unable to resolve JSZip compression library.");
+      }
+      const zip = new JSZipLib();
 
-      const getHtml2Pdf = () => {
-        if (typeof window === "undefined") return null;
-        if (typeof html2pdf === "function") return html2pdf;
-        if (html2pdf && typeof (html2pdf as any).default === "function") {
-          return (html2pdf as any).default;
-        }
-        if (typeof (window as any).html2pdf === "function") {
-          return (window as any).html2pdf;
-        }
-        return null;
-      };
-
-      const exporter = getHtml2Pdf();
+      const exporter = await loadHtml2Pdf();
       if (!exporter) {
         throw new Error("Unable to resolve PDF exporter library.");
       }
@@ -1014,6 +1085,11 @@ export default function App() {
       for (let i = 0; i < filteredStudents.length; i++) {
         const student = filteredStudents[i];
         triggerStatus(`🔄 Compiling transcript PDF ${i + 1}/${filteredStudents.length}: ${student.name}...`);
+
+        const phaseRaw = student.phase || "Phase 1";
+        const phaseStr = phaseRaw.toLowerCase().replace(/\s+/g, "").replace("phase", "ph");
+        const rollStr = student.rollNo || "—";
+        const filenameClean = `${student.name}-${phaseStr}-${student.grade}-${rollStr}`.replace(/[\/\\:*?"<>|]/g, "_");
 
         const totalScore = calculateTotalScore(student.scores);
         const letterGrade = percentageToLetterGrade(totalScore);
@@ -1248,26 +1324,9 @@ export default function App() {
       // Cleanup
       document.body.removeChild(helperContainer);
 
-      triggerStatus("📂 Bundling compiled transcripts into target ZIP archive...");
-      const content = await zip.generateAsync({ type: "blob" });
-
-      const classFilterStr = classFilter === "all" ? "All_Classes" : classFilter.replace(/\s+/g, "_");
-      const batchFilterStr = batchFilter === "all" ? "All_Batches" : batchFilter.replace(/\s+/g, "_");
-      const phaseFilterStr = phaseFilter === "all" ? "All_Phases" : phaseFilter.replace(/\s+/g, "_");
-      const zipName = `EduGrade_Transcripts_${classFilterStr}_${batchFilterStr}_${phaseFilterStr}.zip`;
-
-      const blobUrl = URL.createObjectURL(content);
-      const downloadLink = document.createElement("a");
-      downloadLink.href = blobUrl;
-      downloadLink.download = zipName;
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      document.body.removeChild(downloadLink);
-
-      triggerStatus(`🎉 Success! Downloaded "${zipName}" containing ${filteredStudents.length} report cards bulk exported at once!`);
+      triggerStatus("📂 Bulk ZIP generation deactivated.");
     } catch (err: any) {
-      console.error("Bulk Zip Creation Error:", err);
-      triggerStatus(`❌ Bulk zip creation failed: ${err.message || err}`);
+      console.error("Bulk Zip deactivated error:", err);
     } finally {
       setIsPdfExporting(false);
     }
@@ -1276,22 +1335,20 @@ export default function App() {
   const printReport = (mode: "print" | "download" = "print") => {
     if (!activeStudent) return;
     
-    if (mode === "download") {
-      // Trigger superior direct client download to bypass sandbox popup blockers
-      downloadSinglePDFDirectly(activeStudent);
-      return;
-    }
-
-    // Otherwise standard print dialog
     try {
       localStorage.setItem("edugrade_students", JSON.stringify(students));
     } catch (e) {
       console.error("Local storage save error:", e);
     }
     
-    const url = `/print-preview/${activeStudent.id}?mode=${mode}`;
-    triggerStatus(`Launching printing container for ${activeStudent.name}...`);
-    window.open(url, "_blank");
+    triggerStatus(`Launching native print engine for ${activeStudent.name}...`);
+    try {
+      window.print();
+      triggerStatus(`🎉 Print preview page successfully mounted for ${activeStudent.name}!`);
+    } catch (err: any) {
+      console.error("Direct print failed:", err);
+      triggerStatus(`⚠️ Direct print blocked. Please use your browser's Ctrl+P shortcut to print.`);
+    }
   };
 
 
@@ -1314,9 +1371,12 @@ export default function App() {
             <div
               key={st.id}
               onClick={() => setSelectedStudentId(st.id)}
-              className={`flex justify-between items-center p-4 cursor-pointer transition-all hover:bg-slate-50 border-l-4 ${
-                isSelected ? "bg-blue-50/50 border-blue-600 font-bold" : "border-transparent"
+              className={`flex justify-between items-center p-4 cursor-pointer transition-all border-l-4 select-none ${
+                isSelected 
+                  ? "bg-blue-50/80 border-blue-600 font-bold shadow-sm" 
+                  : "border-transparent hover:bg-slate-50 active:bg-indigo-50/40"
               }`}
+              style={{ contentVisibility: "auto" }}
             >
               <div className="flex-1 min-w-0 pr-2">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1465,6 +1525,14 @@ export default function App() {
         <div className="fixed top-4 right-4 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl z-50 flex items-center gap-3 border border-slate-700 animate-slide-in font-medium transition-all text-sm">
           <div className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
           <span>{statusMessage}</span>
+          <button 
+            type="button"
+            onClick={() => setStatusMessage("")}
+            className="ml-2 pl-1 text-slate-400 hover:text-white transition-colors cursor-pointer Focus:outline-none text-[12px]"
+            title="Dismiss"
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -1534,15 +1602,6 @@ export default function App() {
           >
             <FileSpreadsheet className="h-4 w-4" />
             <span>Download Master Excel</span>
-          </button>
-          
-          <button
-            id="btn-download-pdf"
-            onClick={() => printReport("download")}
-            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-sky-400 font-semibold text-xs px-4 py-2.5 rounded-lg border border-slate-700/65 transition-all cursor-pointer shadow-md hover:scale-[1.01] active:scale-[0.99]"
-          >
-            <Download className="h-4 w-4" />
-            <span>Download PDF</span>
           </button>
 
           <button
@@ -1695,7 +1754,7 @@ export default function App() {
                     className="bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition-colors cursor-pointer shrink-0 flex items-center gap-1.5"
                   >
                     <Eye className="h-3.5 w-3.5" />
-                    <span>Preview PDF Transcript</span>
+                    <span>Preview Official Transcript</span>
                   </button>
                 </div>
               </div>
@@ -2213,30 +2272,10 @@ export default function App() {
                   * Pre-fills active classroom roster. Edit scores in Excel, then upload file.
                 </p>
               </div>
-
-              {/* Bulk Exports Section */}
-              <div className="space-y-2 pt-1 border-t border-slate-200/60">
-                <span className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wide block">
-                  📦 Compiled ZIP Reports Archive
-                </span>
-                <button
-                  type="button"
-                  onClick={downloadBulkZip}
-                  disabled={isPdfExporting || filteredStudents.length === 0}
-                  className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-extrabold text-[11px] py-2 px-3 rounded-lg border-b-2 border-emerald-800 shadow cursor-pointer transition active:scale-[0.98]"
-                  title="Generate, bundle and export high-fidelity individual report card PDFs for all currently filtered students into a single ZIP"
-                >
-                  <FolderArchive className="h-3.5 w-3.5" />
-                  <span>Download reports of Class (${filteredStudents.length}) in ZIP</span>
-                </button>
-                <p className="text-[9px] text-slate-400 leading-tight">
-                  * Generates PDF report cards of students based on active class, batch and phase filters.
-                </p>
-              </div>
             </div>
 
             {/* Workplace Selector Switch */}
-            <div className="inline-flex w-full bg-slate-105 p-1 rounded-xl border border-slate-200 mt-1">
+            <div className="inline-flex w-full bg-slate-100 p-1 rounded-xl border border-slate-200 mt-1">
               <button
                 type="button"
                 onClick={() => setEditorMode("matrix")}
@@ -2297,7 +2336,7 @@ export default function App() {
                             key={st.id}
                             onClick={() => setSelectedStudentId(st.id)}
                             className={`transition-colors cursor-pointer text-xs ${
-                              isSelected ? "bg-blue-50/60" : "hover:bg-slate-50/60"
+                              isSelected ? "bg-blue-50/80 font-medium" : "hover:bg-slate-50/60"
                             }`}
                           >
                             <td className="py-2.5 px-3 font-semibold text-slate-900 flex items-center gap-1.5">
@@ -2306,27 +2345,29 @@ export default function App() {
                                 id={`input-${st.id}-name`}
                                 type="text"
                                 value={st.name}
-                                onClick={(e) => e.stopPropagation()}
+                                onFocus={() => setSelectedStudentId(st.id)}
                                 onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "name")}
                                 onChange={(e) => handleStudentFieldChangeInList(st.id, "name", e.target.value)}
                                 className="bg-transparent text-xs text-slate-800 font-bold border-b border-transparent focus:border-blue-500 focus:bg-white focus:outline-none p-0.5 rounded transition w-full"
                               />
                             </td>
-                            <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
+                            <td className="py-2 px-2">
                               <input
                                 id={`input-${st.id}-rollNo`}
                                 type="text"
                                 placeholder="R-"
                                 value={st.rollNo || ""}
+                                onFocus={() => setSelectedStudentId(st.id)}
                                 onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "rollNo")}
                                 onChange={(e) => handleStudentFieldChangeInList(st.id, "rollNo", e.target.value)}
                                 className="bg-transparent text-xs font-mono text-slate-800 font-bold border-b border-transparent hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none p-0.5 rounded transition w-12 text-center"
                               />
                             </td>
-                            <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
+                            <td className="py-2 px-2">
                               <select
                                 id={`input-${st.id}-grade`}
                                 value={st.grade}
+                                onFocus={() => setSelectedStudentId(st.id)}
                                 onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "grade")}
                                 onChange={(e) => handleStudentFieldChangeInList(st.id, "grade", e.target.value)}
                                 className="bg-transparent hover:bg-slate-100 text-slate-800 font-semibold p-1 pr-3 text-xs focus:outline-none rounded border border-transparent border-b-slate-100 focus:border-blue-300 text-[11px]"
@@ -2336,10 +2377,11 @@ export default function App() {
                                 ))}
                               </select>
                             </td>
-                            <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
+                            <td className="py-2 px-2">
                               <select
                                 id={`input-${st.id}-phase`}
                                 value={st.phase || "Phase 1"}
+                                onFocus={() => setSelectedStudentId(st.id)}
                                 onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "phase")}
                                 onChange={(e) => handleStudentFieldChangeInList(st.id, "phase", e.target.value)}
                                 className="bg-transparent hover:bg-slate-100 text-slate-800 font-semibold p-1 pr-3 text-xs focus:outline-none rounded border border-transparent border-b-slate-100 focus:border-blue-300 text-[11px]"
@@ -2349,18 +2391,19 @@ export default function App() {
                                 ))}
                               </select>
                             </td>
-                            <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
+                            <td className="py-2 px-2">
                               <input
                                 id={`input-${st.id}-batch`}
                                 type="text"
                                 value={st.batch || "2083 BS"}
+                                onFocus={() => setSelectedStudentId(st.id)}
                                 onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "batch")}
                                 onChange={(e) => handleStudentFieldChangeInList(st.id, "batch", e.target.value)}
                                 className="bg-transparent text-xs text-slate-800 font-bold border-b border-transparent hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none p-0.5 rounded transition w-16 text-center"
                                 placeholder="eg. 2083"
                               />
                             </td>
-                            <td className="py-2 px-1 text-center" onClick={(e) => e.stopPropagation()}>
+                            <td className="py-2 px-1 text-center">
                               <input
                                 id={`input-${st.id}-participation`}
                                 type="number"
@@ -2368,7 +2411,10 @@ export default function App() {
                                 max="10"
                                 value={st.scores.participation}
                                 onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "participation")}
-                                onFocus={(e) => e.target.select()}
+                                onFocus={(e) => {
+                                  e.target.select();
+                                  setSelectedStudentId(st.id);
+                                }}
                                 onChange={(e) => {
                                   let valStr = e.target.value;
                                   if (/^0[0-9]+/.test(valStr)) {
@@ -2380,7 +2426,7 @@ export default function App() {
                                 className="w-10 text-center font-mono font-bold bg-slate-50 border border-slate-200 rounded py-0.5 text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-none text-[11px]"
                               />
                             </td>
-                            <td className="py-2 px-1 text-center" onClick={(e) => e.stopPropagation()}>
+                            <td className="py-2 px-1 text-center">
                               <input
                                 id={`input-${st.id}-homework`}
                                 type="number"
@@ -2388,7 +2434,10 @@ export default function App() {
                                 max="10"
                                 value={st.scores.homework}
                                 onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "homework")}
-                                onFocus={(e) => e.target.select()}
+                                onFocus={(e) => {
+                                  e.target.select();
+                                  setSelectedStudentId(st.id);
+                                }}
                                 onChange={(e) => {
                                   let valStr = e.target.value;
                                   if (/^0[0-9]+/.test(valStr)) {
@@ -2400,7 +2449,7 @@ export default function App() {
                                 className="w-10 text-center font-mono font-bold bg-slate-50 border border-slate-200 rounded py-0.5 text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-none text-[11px]"
                               />
                             </td>
-                            <td className="py-2 px-1 text-center" onClick={(e) => e.stopPropagation()}>
+                            <td className="py-2 px-1 text-center">
                               <input
                                 id={`input-${st.id}-mcq`}
                                 type="number"
@@ -2408,7 +2457,10 @@ export default function App() {
                                 max="30"
                                 value={st.scores.mcq}
                                 onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "mcq")}
-                                onFocus={(e) => e.target.select()}
+                                onFocus={(e) => {
+                                  e.target.select();
+                                  setSelectedStudentId(st.id);
+                                }}
                                 onChange={(e) => {
                                   let valStr = e.target.value;
                                   if (/^0[0-9]+/.test(valStr)) {
@@ -2420,7 +2472,7 @@ export default function App() {
                                 className="w-11 text-center font-mono font-bold bg-slate-50 border border-slate-200 rounded py-0.5 text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-none text-[11px]"
                               />
                             </td>
-                            <td className="py-2 px-1 text-center" onClick={(e) => e.stopPropagation()}>
+                            <td className="py-2 px-1 text-center">
                               <input
                                 id={`input-${st.id}-project`}
                                 type="number"
@@ -2428,7 +2480,10 @@ export default function App() {
                                 max="30"
                                 value={st.scores.project}
                                 onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "project")}
-                                onFocus={(e) => e.target.select()}
+                                onFocus={(e) => {
+                                  e.target.select();
+                                  setSelectedStudentId(st.id);
+                                }}
                                 onChange={(e) => {
                                   let valStr = e.target.value;
                                   if (/^0[0-9]+/.test(valStr)) {
@@ -2440,7 +2495,7 @@ export default function App() {
                                 className="w-11 text-center font-mono font-bold bg-slate-50 border border-slate-200 rounded py-0.5 text-slate-800 focus:bg-white focus:border-blue-500 focus:outline-none text-[11px]"
                               />
                             </td>
-                            <td className="py-2 px-1 text-center" onClick={(e) => e.stopPropagation()}>
+                            <td className="py-2 px-1 text-center">
                               <input
                                 id={`input-${st.id}-lab`}
                                 type="number"
@@ -2448,7 +2503,10 @@ export default function App() {
                                 max="20"
                                 value={st.scores.lab}
                                 onKeyDown={(e) => handleKeyDownInMatrix(e, st.id, "lab")}
-                                onFocus={(e) => e.target.select()}
+                                onFocus={(e) => {
+                                  e.target.select();
+                                  setSelectedStudentId(st.id);
+                                }}
                                 onChange={(e) => {
                                   let valStr = e.target.value;
                                   if (/^0[0-9]+/.test(valStr)) {
@@ -2465,10 +2523,13 @@ export default function App() {
                                 {total} ({letterGrade})
                               </span>
                             </td>
-                            <td className="py-2 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                            <td className="py-2 px-3 text-center">
                               <button
                                 type="button"
-                                onClick={() => handleDeleteStudent(st.id, st.name)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteStudent(st.id, st.name);
+                                }}
                                 className="text-slate-350 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition-colors cursor-pointer"
                                 title="Delete Student"
                               >
@@ -2780,7 +2841,7 @@ export default function App() {
                   <div>
                     <p className="font-semibold">Interactive Print Preview Studio</p>
                     <p className="text-[11px] text-amber-700/95 mt-0.5 leading-relaxed">
-                      This beautifully styled sheet matches the standard single-page Mount Annapurna transcript. Toggle <strong className="font-extrabold text-slate-900">Official Parent View</strong> to hide internal raw marks. Click <strong className="font-extrabold text-slate-900">"Download PDF"</strong> or <strong className="font-extrabold text-slate-900">"Print Report"</strong>.
+                      This beautifully styled sheet matches the standard single-page Mount Annapurna transcript. Toggle <strong className="font-extrabold text-slate-900">Official Parent View</strong> to hide internal raw marks. Click <strong className="font-extrabold text-slate-900">"Print Report"</strong> to save as a high-fidelity PDF or print to any printer.
                     </p>
                   </div>
                 </div>
@@ -2855,10 +2916,7 @@ export default function App() {
                 
                 @media screen {
                   .pdf-export-mode {
-                    position: fixed !important;
-                    left: 10000px !important; /* Render offscreen so browser layout is unaffected */
-                    top: 0 !important;
-                    z-index: -100 !important;
+                    /* Keep in visual flow during export to avoid blank canvas clip */
                   }
                 }
               `}</style>
@@ -2896,7 +2954,7 @@ export default function App() {
                   </div>
 
                   {/* Candidate Info Grid / Student Info Grid */}
-                  <div className="bg-slate-50/80 rounded-lg p-3.5 grid grid-cols-4 gap-y-2.5 gap-x-4 border border-slate-200/80 text-xs shadow-inner">
+                  <div className="bg-slate-50 rounded-lg p-3.5 grid grid-cols-4 gap-y-2.5 gap-x-4 border border-slate-200 text-xs shadow-inner">
                     <div className="col-span-2">
                       <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Student Name</p>
                       <p className="font-extrabold text-slate-900 text-sm mt-0.5">{activeStudent.name}</p>
@@ -3012,7 +3070,7 @@ export default function App() {
                   <div className="overflow-x-auto pt-2">
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
-                        <tr className="border-b border-slate-300 text-slate-700 uppercase font-bold text-[9px] tracking-widest bg-slate-50/80">
+                        <tr className="border-b border-slate-300 text-slate-700 uppercase font-bold text-[9px] tracking-widest bg-slate-50">
                           <th className="py-2 px-3 w-5/12">Grading Area Component</th>
                           <th className="py-2 px-2 text-center w-2/12">Rating</th>
                           <th className="py-2 px-2 text-center w-2/12">Evaluation Scale</th>
@@ -3027,7 +3085,7 @@ export default function App() {
                           const rating = percentageToRating(pct);
 
                           return (
-                            <tr key={key} className="align-top hover:bg-slate-50/20">
+                            <tr key={key} className="align-top hover:bg-slate-50">
                               <td className="py-2.5 px-3 space-y-1">
                                 <span className="font-bold text-slate-900 block leading-tight">
                                   {comp.name}
@@ -3080,7 +3138,7 @@ export default function App() {
                 {/* Growth and Comments blocks */}
                 <div className="space-y-3.5 pt-3 border-t border-slate-200">
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="border border-slate-200 rounded-lg p-3 space-y-1 bg-slate-50/30">
+                    <div className="border border-slate-200 rounded-lg p-3 space-y-1 bg-slate-50">
                       <h4 className="font-bold uppercase tracking-wide text-blue-600 text-[10px] flex items-center gap-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                         Student Computing Strengths
@@ -3090,7 +3148,7 @@ export default function App() {
                       </p>
                     </div>
 
-                    <div className="border border-slate-200 rounded-lg p-3 space-y-1 bg-slate-50/30">
+                    <div className="border border-slate-200 rounded-lg p-3 space-y-1 bg-slate-50">
                       <h4 className="font-bold uppercase tracking-wide text-blue-600 text-[10px] flex items-center gap-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
                         Areas of Growth & Next Steps
