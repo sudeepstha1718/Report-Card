@@ -37,6 +37,7 @@ import {
   percentageToLetterGrade, 
   calculateTotalScore, 
   generateDefaultRemarks, 
+  getRemarkByComponentAndRating,
   generateDefaultStrengthsAndImprovements,
   exportToClassroomExcel 
 } from "./lib/gradeUtils";
@@ -457,6 +458,8 @@ export default function App() {
 
   const [isIframe, setIsIframe] = useState(false);
   const [isPdfExporting, setIsPdfExporting] = useState(false);
+  const [popupBlocked, setPopupBlocked] = useState(false);
+  const [blockedUrl, setBlockedUrl] = useState("");
 
   useEffect(() => {
     try {
@@ -670,6 +673,17 @@ export default function App() {
 
   const handleAfterSupportChange = (key: ComponentKey, val: string) => {
     if (!activeStudent) return;
+    
+    const finalVal = val === "Good" ? "Satisfactory" : val;
+    
+    let ratingNum = 4;
+    if (finalVal === "Excellent") ratingNum = 4;
+    else if (finalVal === "Very Good") ratingNum = 3;
+    else if (finalVal === "Satisfactory") ratingNum = 2;
+    else if (finalVal === "Needs Improvement") ratingNum = 1;
+
+    const autoRemark = getRemarkByComponentAndRating(key, ratingNum);
+
     setStudents(
       students.map((s) => {
         if (s.id === activeStudent.id) {
@@ -677,7 +691,11 @@ export default function App() {
             ...s,
             afterSupport: {
               ...s.afterSupport,
-              [key]: val
+              [key]: finalVal
+            },
+            remarks: {
+              ...s.remarks,
+              [key]: autoRemark
             }
           };
         }
@@ -798,8 +816,8 @@ export default function App() {
         lab: "Excellent"
       },
       remarks: generateDefaultRemarks(standardScores),
-      strengths: `${newStudentName} shows strong active cooperation during computer laboratory tasks and handles basic program commands with confidence.`,
-      areasOfImprovement: `Encouraged to practice keyboard focus exercises regularly to boost confidence and secure higher results in concept evaluations.`
+      strengths: generateDefaultStrengthsAndImprovements(standardScores).strengths,
+      areasOfImprovement: generateDefaultStrengthsAndImprovements(standardScores).areasOfImprovement
     };
 
     const newList = [...students, newRec];
@@ -1337,17 +1355,34 @@ export default function App() {
     
     try {
       localStorage.setItem("edugrade_students", JSON.stringify(students));
+      localStorage.setItem("edugrade_schoolName", schoolName);
+      localStorage.setItem("edugrade_schoolMotto", schoolMotto || "");
+      if (schoolLogo) {
+        localStorage.setItem("school_logo", schoolLogo);
+      }
     } catch (e) {
       console.error("Local storage save error:", e);
     }
     
-    triggerStatus(`Launching native print engine for ${activeStudent.name}...`);
+    const url = `/print-preview/${activeStudent.id}?mode=${mode}`;
+    triggerStatus(`Launching isolated high-fidelity print viewer for ${activeStudent.name}...`);
+    
     try {
-      window.print();
-      triggerStatus(`🎉 Print preview page successfully mounted for ${activeStudent.name}!`);
+      const win = window.open(url, "_blank");
+      if (win) {
+        triggerStatus(`🎉 Isolated print page opened successfully for ${activeStudent.name}!`);
+        setPopupBlocked(false);
+      } else {
+        // Safe standard fallback: show beautiful manual launch modal instead of jarring iframe redirect
+        setBlockedUrl(url);
+        setPopupBlocked(true);
+        triggerStatus(`⚠️ Browser blocked the print window popup. Please click to launch.`);
+      }
     } catch (err: any) {
-      console.error("Direct print failed:", err);
-      triggerStatus(`⚠️ Direct print blocked. Please use your browser's Ctrl+P shortcut to print.`);
+      console.error("Opening print preview tab failed:", err);
+      // If error (highly sandboxed iframe), also show the user action modal (can't block user-initiated clicks!)
+      setBlockedUrl(url);
+      setPopupBlocked(true);
     }
   };
 
@@ -2693,13 +2728,13 @@ export default function App() {
                               <span className="text-slate-400">Evaluation:</span>
                               <select
                                 id={`support-${key}`}
-                                value={activeStudent.afterSupport[key] || "Excellent"}
+                                value={activeStudent.afterSupport[key] === "Good" ? "Satisfactory" : (activeStudent.afterSupport[key] || "Excellent")}
                                 onChange={(e) => handleAfterSupportChange(key, e.target.value)}
                                 className="bg-slate-50 text-[10px] font-bold border border-slate-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700 transition"
                               >
                                 <option value="Excellent">Excellent</option>
                                 <option value="Very Good">Very Good</option>
-                                <option value="Good">Good</option>
+                                <option value="Satisfactory">Satisfactory</option>
                                 <option value="Needs Improvement">Needs Improvement</option>
                               </select>
                             </div>
@@ -2879,15 +2914,16 @@ export default function App() {
                     display: flex !important;
                     flex-direction: column !important;
                     justify-content: space-between !important;
+                    gap: 0px !important;
                     box-sizing: border-box !important;
-                    position: fixed !important;
+                    position: absolute !important;
                     left: 0 !important;
                     top: 0 !important;
                     width: 210mm !important;
                     height: 297mm !important;
                     min-height: 297mm !important;
                     max-height: 297mm !important;
-                    padding: 14mm 15mm !important;
+                    padding: 10mm 12mm 10mm 12mm !important;
                     margin: 0 !important;
                     border: none !important;
                     border-radius: 0 !important;
@@ -2902,7 +2938,7 @@ export default function App() {
                   height: 297mm !important;
                   min-height: 297mm !important;
                   max-height: 297mm !important;
-                  padding: 12mm 15mm !important;
+                  padding: 10mm 12mm 10mm 12mm !important;
                   margin: 0 auto !important;
                   border: none !important;
                   border-radius: 0 !important;
@@ -2910,6 +2946,7 @@ export default function App() {
                   display: flex !important;
                   flex-direction: column !important;
                   justify-content: space-between !important;
+                  gap: 0px !important;
                   box-sizing: border-box !important;
                   background-color: #ffffff !important;
                 }
@@ -2920,7 +2957,7 @@ export default function App() {
                   }
                 }
               `}</style>
-
+              
               {/* The Evaluation Form Page Canvas */}
               <div 
                 id="printable-report-card" 
@@ -2932,7 +2969,6 @@ export default function App() {
               >
                 
                 {/* Mount Annapurna Style Header */}
-                <div className="space-y-4">
                   <div className="flex flex-col sm:flex-row justify-between items-center gap-4 border-b-2 border-slate-900 pb-4">
                     <div className="w-full sm:max-w-[480px] md:max-w-[520px] overflow-hidden">
                       <SchoolLogo 
@@ -2954,44 +2990,38 @@ export default function App() {
                   </div>
 
                   {/* Candidate Info Grid / Student Info Grid */}
-                  <div className="bg-slate-50 rounded-lg p-3.5 grid grid-cols-4 gap-y-2.5 gap-x-4 border border-slate-200 text-xs shadow-inner">
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 grid grid-cols-4 gap-y-2 gap-x-4 text-[11px] shadow-sm">
                     <div className="col-span-2">
-                      <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Student Name</p>
-                      <p className="font-extrabold text-slate-900 text-sm mt-0.5">{activeStudent.name}</p>
+                      <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Student Name</p>
+                      <p className="font-extrabold text-slate-900 text-sm">{activeStudent.name}</p>
                     </div>
-
                     <div>
-                      <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Roll Number</p>
-                      <p className="font-extrabold text-blue-700 mt-0.5 font-mono text-sm">{activeStudent.rollNo || "—"}</p>
+                      <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Grade / Section</p>
+                      <p className="font-bold text-slate-800 text-sm">{activeStudent.grade}</p>
                     </div>
-
                     <div>
-                      <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Grade / Section</p>
-                      <p className="font-bold text-slate-800 mt-0.5">{activeStudent.grade}</p>
+                      <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Academic Batch</p>
+                      <p className="font-extrabold text-slate-800 text-sm">{activeStudent.batch || "2083 BS"}</p>
                     </div>
-
                     <div>
-                      <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Academic Batch</p>
-                      <p className="font-extrabold text-slate-800 mt-0.5">{activeStudent.batch || "2083 BS"}</p>
+                      <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Roll Number</p>
+                      <p className="font-extrabold text-blue-700 font-mono text-sm">{activeStudent.rollNo || "—"}</p>
                     </div>
-
                     <div>
-                      <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Term / Phase</p>
-                      <p className="font-bold text-slate-800 mt-0.5">{activeStudent.phase || "Phase 1"}</p>
+                      <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Term / Phase</p>
+                      <p className="font-bold text-slate-800 text-sm">{activeStudent.phase || "Phase 1"}</p>
                     </div>
-
                     <div>
-                      <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Evaluation Date</p>
-                      <p className="font-mono text-slate-805 mt-0.5">{activeStudent.date}</p>
+                      <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Evaluation Date</p>
+                      <p className="font-mono text-slate-600 font-bold text-sm">{activeStudent.date}</p>
                     </div>
-
                     <div>
-                      <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Overall Grade</p>
-                      <p className="mt-0.5 text-slate-900 font-extrabold text-sm flex items-center gap-1.5">
-                        <span className="font-mono bg-slate-900 text-white rounded px-2 py-0.5 text-xs font-black">
+                      <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400 font-bold">Overall Grade</p>
+                      <div className="mt-0.5">
+                        <span className="font-mono bg-slate-900 text-white rounded px-2 py-0.5 text-[10px] font-black inline-block">
                           {percentageToLetterGrade(calculateTotalScore(activeStudent.scores))}
                         </span>
-                      </p>
+                      </div>
                     </div>
                   </div>
 
@@ -3124,7 +3154,9 @@ export default function App() {
                                 </span>
                               </td>
                               <td className="py-2.5 px-3 text-[10.5px] text-slate-600 leading-normal font-normal italic">
-                                {activeStudent.remarks[key] || "No customized comments provided."}
+                                <div className="line-clamp-3" title={activeStudent.remarks[key] || "No customized comments provided."}>
+                                  {activeStudent.remarks[key] || "No customized comments provided."}
+                                </div>
                               </td>
                             </tr>
                           );
@@ -3133,74 +3165,72 @@ export default function App() {
                     </table>
                   </div>
 
+                {/* Growth and Remarks block */}
+                <div className="grid grid-cols-2 gap-3.5 pt-1.5 border-t border-slate-200 w-full">
+                  <div className="border border-slate-200 rounded-lg p-2.5 space-y-1 bg-slate-50">
+                    <h4 className="font-bold uppercase tracking-wide text-blue-600 text-[8.5px] flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                      Student Computing Strengths
+                    </h4>
+                    <p className="text-[9.5px] text-slate-700 leading-relaxed font-normal italic line-clamp-4" title={activeStudent.strengths || "The student has demonstrated strong practical engagement during computing lab setups."}>
+                      {activeStudent.strengths || "The student has demonstrated strong practical engagement during computing lab setups."}
+                    </p>
+                  </div>
+
+                  <div className="border border-slate-200 rounded-lg p-2.5 space-y-1 bg-slate-50">
+                    <h4 className="font-bold uppercase tracking-wide text-blue-600 text-[8.5px] flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                      Areas of Growth & Next Steps
+                    </h4>
+                    <p className="text-[9.5px] text-slate-700 leading-relaxed font-normal italic line-clamp-4" title={activeStudent.areasOfImprovement || "Regular touch typing drills and homework submission revision are recommended."}>
+                      {activeStudent.areasOfImprovement || "Regular touch typing drills and homework submission revision are recommended."}
+                    </p>
+                  </div>
                 </div>
 
-                {/* Growth and Comments blocks */}
-                <div className="space-y-3.5 pt-3 border-t border-slate-200">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="border border-slate-200 rounded-lg p-3 space-y-1 bg-slate-50">
-                      <h4 className="font-bold uppercase tracking-wide text-blue-600 text-[10px] flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                        Student Computing Strengths
-                      </h4>
-                      <p className="text-[11px] text-slate-700 leading-relaxed font-normal italic">
-                        {activeStudent.strengths || "The student has demonstrated strong practical engagement during computing lab setups."}
-                      </p>
+                {/* Aggregate metrics */}
+                <div className="flex flex-row justify-between items-center bg-slate-50 border border-slate-200 rounded-lg p-3 gap-2 text-xs w-full">
+                  <div>
+                    <strong className="block font-bold text-[9px] text-slate-700 uppercase tracking-wider">Overall Academic standing</strong>
+                    <span className="text-[8px] text-slate-400 font-mono">Calculated over all 5 grading weights (Passing mark: 35%)</span>
+                  </div>
+                  <div className="flex gap-3 items-center">
+                    <div className="flex items-center gap-1.5 bg-slate-100 border border-slate-200 rounded px-2 py-0.5 font-mono text-slate-805 font-bold text-[9.5px]">
+                      <span>Percentage:</span>
+                      <span className="font-extrabold">{calculateTotalScore(activeStudent.scores)}%</span>
                     </div>
-
-                    <div className="border border-slate-200 rounded-lg p-3 space-y-1 bg-slate-50">
-                      <h4 className="font-bold uppercase tracking-wide text-blue-600 text-[10px] flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-                        Areas of Growth & Next Steps
-                      </h4>
-                      <p className="text-[11px] text-slate-700 leading-relaxed font-normal italic">
-                        {activeStudent.areasOfImprovement || "Regular touch typing drills and homework submission revision are recommended."}
-                      </p>
+                    <div className="border-l border-slate-200 pl-4 flex items-center gap-1">
+                      <span className={`w-1.5 h-1.5 rounded-full ${calculateTotalScore(activeStudent.scores) >= 35 ? "bg-emerald-500" : "bg-rose-500 animate-pulse"}`} />
+                      <strong className={`font-black text-[9px] tracking-wider uppercase ${calculateTotalScore(activeStudent.scores) >= 35 ? "text-emerald-700" : "text-rose-600"}`}>
+                        {calculateTotalScore(activeStudent.scores) >= 35 ? "PASSED ✅" : "FAILED ❌"}
+                      </strong>
                     </div>
                   </div>
+                </div>
 
-                  {/* Recommendation Stand & Level */}
-                  <div className="flex flex-row justify-between items-center bg-slate-50 border border-slate-200 rounded-lg p-3 gap-2 text-xs">
-                    <div>
-                      <strong className="block font-bold text-[10.5px] text-slate-700 uppercase tracking-wider">Overall Academic standing</strong>
-                      <span className="text-[10px] text-slate-400 font-mono">Calculated over all 5 grading weights (Passing mark: 35%)</span>
-                    </div>
-                    <div className="flex gap-4 items-center">
-                      <div className="flex items-center gap-1.5 bg-slate-100 border border-slate-200 rounded px-2 py-0.5 font-mono text-slate-805 font-bold">
-                        <span>Percentage:</span>
-                        <span className="font-extrabold">{calculateTotalScore(activeStudent.scores)}%</span>
-                      </div>
-                      <div className="border-l border-slate-200 pl-4 flex items-center gap-1.5">
-                        <span className={`w-2.5 h-2.5 rounded-full ${calculateTotalScore(activeStudent.scores) >= 35 ? "bg-emerald-500" : "bg-rose-500 animate-pulse"}`} />
-                        <strong className={`font-black text-xs tracking-wider uppercase ${calculateTotalScore(activeStudent.scores) >= 35 ? "text-emerald-700" : "text-rose-600"}`}>
-                          {calculateTotalScore(activeStudent.scores) >= 35 ? "PASSED ✅" : "FAILED ❌"}
-                        </strong>
-                      </div>
-                    </div>
-                  </div>
-
+                {/* Signatures & Footer Block */}
+                <div className="mt-0 space-y-2 pt-1.5 border-t border-slate-200 w-full">
                   {/* Teacher & Parent Signature Section */}
-                  <div className="pt-4 grid grid-cols-2 gap-8 text-xs text-slate-900">
-                    <div className="space-y-2">
-                      <p className="font-extrabold uppercase tracking-widest text-slate-900 text-[9px]">Evaluator Signature</p>
-                      <div className="border-b border-slate-350 w-full pt-2 h-5" />
-                      <p className="text-[10px] font-bold text-slate-900">Mr. Sudeep Shrestha (Teacher)</p>
-                      <p className="text-[10px] font-bold text-slate-500">Date: <span className="font-mono text-slate-900">{activeStudent.date}</span></p>
+                  <div className="grid grid-cols-2 gap-8 text-[9px] text-slate-900 pt-1">
+                    <div className="space-y-1">
+                      <p className="font-extrabold uppercase tracking-widest text-slate-400 text-[7.5px]">Evaluator Signature</p>
+                      <div className="border-b border-slate-300 w-full pt-1 h-3.5" />
+                      <p className="text-[8.5px] font-bold text-slate-900 mt-1">Mr. Sudeep Shrestha (Teacher)</p>
+                      <p className="text-[8.5px] font-bold text-slate-400">Date: <span className="font-mono text-slate-900 font-bold">{activeStudent.date}</span></p>
                     </div>
 
-                    <div className="space-y-2">
-                      <p className="font-extrabold uppercase tracking-widest text-slate-900 text-[9px]">Parent / Guardian Signature</p>
-                      <div className="border-b border-slate-350 w-full pt-2 h-5" />
-                      <p className="text-[10px] font-bold text-slate-500 pt-2.5">Date Checked: __________________</p>
+                    <div className="space-y-1">
+                      <p className="font-extrabold uppercase tracking-widest text-slate-400 text-[7.5px]">Parent / Guardian Signature</p>
+                      <div className="border-b border-slate-300 w-full pt-1 h-3.5" />
+                      <p className="text-[8.5px] font-bold text-slate-500 pt-2.5">Date Checked: __________________</p>
                     </div>
                   </div>
 
                   {/* PDF Tiny Footer bar */}
-                  <div className="pt-3 border-t border-slate-100 flex justify-between items-center text-[9px] text-slate-400">
-                    <span />
+                  <div className="pt-1.5 border-t border-slate-100 flex justify-between items-center text-[7.5px] text-slate-400 font-mono">
+                    <span>PRINT PROTOCOL OVERVIEW: HIGH-FIDELITY A4 STATIC CACHE</span>
                     <span>Page 1 of 1</span>
                   </div>
-
                 </div>
 
               </div>
@@ -3239,6 +3269,52 @@ export default function App() {
           <span className="text-slate-550 font-mono">1 = Beginner, 4 = Excellent Scale</span>
         </div>
       </footer>
+
+      {/* Print Popup Blocked Accessibility Modal */}
+      {popupBlocked && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm print:hidden">
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4 text-center space-y-4 animate-fade-in">
+            <div className="w-12 h-12 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-500 mx-auto">
+              <Printer className="h-5 w-5" />
+            </div>
+            
+            <div className="space-y-1.5">
+              <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-tight">Print Window Blocked</h3>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Your browser blocked the print page because this application is running inside a sandbox preview. Click "Open Print View" to open it safely.
+              </p>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-[10.5px] text-amber-800 leading-relaxed text-left flex items-start gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1.5 flex-shrink-0" />
+              <span>
+                <strong>Click below to launch:</strong> Browsers always allow popup links when clicked manually. Once opened, your operating system print dialogue will load.
+              </span>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setPopupBlocked(false)}
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-2.5 px-4 rounded-xl border border-slate-200 transition cursor-pointer font-sans"
+              >
+                Cancel
+              </button>
+              
+              <a
+                href={blockedUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setPopupBlocked(false)}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs py-2.5 px-4 rounded-xl shadow-lg shadow-blue-500/20 text-center flex items-center justify-center gap-1.5 cursor-pointer hover:scale-[1.01] active:scale-[0.99] transition-all font-sans"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Open Print View</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

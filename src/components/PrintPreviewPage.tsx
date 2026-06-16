@@ -276,10 +276,10 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
           #printable-report-card {
             display: flex !important;
             flex-direction: column !important;
-            justify-content: flex-start !important;
-            gap: 12px !important;
+            justify-content: space-between !important;
+            gap: 0px !important;
             box-sizing: border-box !important;
-            position: fixed !important;
+            position: absolute !important;
             left: 0 !important;
             top: 0 !important;
             width: 210mm !important;
@@ -308,8 +308,8 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
           box-shadow: none !important;
           display: flex !important;
           flex-direction: column !important;
-          justify-content: flex-start !important;
-          gap: 12px !important;
+          justify-content: space-between !important;
+          gap: 0px !important;
           box-sizing: border-box !important;
           background-color: #ffffff !important;
         }
@@ -348,7 +348,7 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
       {/* Standard Mount Annapurna Print Sheet Wrapper */}
       <div 
         id="printable-report-card" 
-        className="w-[210mm] h-[297mm] min-h-[297mm] max-h-[297mm] bg-white text-slate-900 flex flex-col justify-start gap-y-3 p-[10mm] border border-slate-300 shadow-2xl rounded-2xl box-sizing-border font-sans relative overflow-hidden"
+        className="w-[210mm] h-[297mm] min-h-[297mm] max-h-[297mm] bg-white text-slate-900 flex flex-col justify-between py-[10mm] px-[12mm] border border-slate-300 shadow-2xl rounded-2xl box-sizing-border font-sans relative overflow-hidden"
       >
         {/* Header Block with School Logo */}
         <div className="flex justify-between items-center border-b-2 border-slate-800 pb-2">
@@ -371,36 +371,38 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
         </div>
 
         {/* Student Info Card */}
-        <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 grid grid-cols-4 gap-y-2 gap-x-4 text-[11px] shadow-sm">
+        <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 grid grid-cols-4 gap-y-2 gap-x-4 text-[11px] shadow-sm">
           <div className="col-span-2">
             <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Student Name</p>
-            <p className="font-extrabold text-slate-900 text-xs">{student.name}</p>
-          </div>
-          <div>
-            <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Roll Number</p>
-            <p className="font-extrabold text-blue-700 font-mono text-xs">{student.rollNo || "—"}</p>
+            <p className="font-extrabold text-slate-900 text-sm">{student.name}</p>
           </div>
           <div>
             <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Grade / Section</p>
-            <p className="font-bold text-slate-800">{student.grade}</p>
+            <p className="font-bold text-slate-800 text-sm">{student.grade}</p>
           </div>
           <div>
             <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Academic Batch</p>
-            <p className="font-extrabold text-slate-800">{student.batch || "2083 BS"}</p>
+            <p className="font-extrabold text-slate-800 text-sm">{student.batch || "2083 BS"}</p>
+          </div>
+          <div>
+            <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Roll Number</p>
+            <p className="font-extrabold text-blue-700 font-mono text-sm">{student.rollNo || "—"}</p>
           </div>
           <div>
             <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Term / Phase</p>
-            <p className="font-bold text-slate-800">{student.phase || "Phase 1"}</p>
+            <p className="font-bold text-slate-800 text-sm">{student.phase || "Phase 1"}</p>
           </div>
           <div>
             <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Evaluation Date</p>
-            <p className="font-mono text-slate-600">{student.date}</p>
+            <p className="font-mono text-slate-600 font-bold text-sm">{student.date}</p>
           </div>
           <div>
-            <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Overall Grade</p>
-            <p className="font-mono bg-slate-900 text-white rounded px-1.5 py-0.5 text-[10px] font-black inline-block mt-0.5 w-fit">
-              {percentageToLetterGrade(calculateTotalScore(student.scores))}
-            </p>
+            <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400 font-bold">Overall Grade</p>
+            <div className="mt-0.5">
+              <span className="font-mono bg-slate-900 text-white rounded px-2 py-0.5 text-[10px] font-black inline-block">
+                {percentageToLetterGrade(calculateTotalScore(student.scores))}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -477,16 +479,16 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
 
         {/* Evaluation Matrix Table */}
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-[10.5px]">
+          <table className="w-full text-left border-collapse text-[11px]">
             <thead>
               <tr className="border-b border-slate-350 text-slate-700 uppercase font-bold text-[8px] tracking-widest bg-slate-50">
-                <th className="py-2 px-2.5 w-5/12">Grading Area Component</th>
-                <th className="py-2 px-2 text-center w-2/12">Rating</th>
-                <th className="py-2 px-2 text-center w-2/12">Evaluation Scale</th>
-                <th className="py-2 px-2.5 w-3/12">Educator Remarks</th>
+                <th className="py-1.8 px-3 w-5/12">Grading Area Component</th>
+                <th className="py-1.8 px-3 text-center w-2/12">Rating</th>
+                <th className="py-1.8 px-3 text-center w-2/12">Evaluation Scale</th>
+                <th className="py-1.8 px-3 w-3/12">Educator Remarks</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-755">
+            <tbody className="divide-y divide-slate-100 text-slate-755 font-sans">
               {(Object.keys(COMPONENT_DETAILS) as ComponentKey[]).map((key) => {
                 const comp = COMPONENT_DETAILS[key];
                 const rawScore = student.scores[key] || 0;
@@ -495,15 +497,15 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
 
                 return (
                   <tr key={key} className="align-top">
-                    <td className="py-2 px-2.5 space-y-0.5">
-                      <span className="font-bold text-slate-900 block leading-tight">
+                    <td className="py-2.5 px-3 space-y-0.5">
+                      <span className="font-bold text-slate-900 block leading-tight text-[11px]">
                         {comp.name}
                       </span>
-                      <span className="text-[9.5px] text-slate-450 block font-normal leading-normal">
+                      <span className="text-[9px] text-slate-450 block font-normal leading-normal">
                         {comp.description}
                       </span>
                     </td>
-                    <td className="py-2 px-2 text-center">
+                    <td className="py-2.5 px-3 text-center">
                       <div className="flex justify-center items-center gap-1 font-mono">
                         {[1, 2, 3, 4].map((num) => {
                           const isMatched = num === rating;
@@ -520,13 +522,15 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
                         })}
                       </div>
                     </td>
-                    <td className="py-2 px-2 text-center font-bold text-slate-800 text-[9px] font-mono">
-                      <span className="inline-block px-1 py-0.2 rounded bg-slate-50 border border-slate-200">
+                    <td className="py-2.5 px-3 text-center font-bold text-slate-800 text-[9px] font-mono">
+                      <span className="inline-block px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200">
                         {student.afterSupport[key] || "Excellent"}
                       </span>
                     </td>
-                    <td className="py-2 px-2.5 text-[9.5px] text-slate-600 leading-normal font-normal italic">
-                      {student.remarks[key] || "No custom remarks shared."}
+                    <td className="py-2.5 px-3 text-[9.5px] text-slate-650 leading-normal font-normal italic">
+                      <div className="line-clamp-3" title={student.remarks[key] || "No custom remarks shared."}>
+                        {student.remarks[key] || "No custom remarks shared."}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -536,36 +540,36 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
         </div>
 
         {/* Growth and Remarks block */}
-        <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-200">
-          <div className="border border-slate-200 rounded-lg p-2.5 space-y-0.5 bg-slate-50">
+        <div className="grid grid-cols-2 gap-3.5 pt-1.5 border-t border-slate-200">
+          <div className="border border-slate-200 rounded-lg p-2.5 space-y-1 bg-slate-50">
             <h4 className="font-bold uppercase tracking-wide text-blue-600 text-[8.5px] flex items-center gap-1">
-              <span className="w-1.2 h-1.2 rounded-full bg-blue-500" />
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
               Student Computing Strengths
             </h4>
-            <p className="text-[9.5px] text-slate-700 leading-relaxed font-normal italic">
+            <p className="text-[9.5px] text-slate-700 leading-relaxed font-normal italic line-clamp-4" title={student.strengths || "The student has demonstrated strong practical engagement during computing lab setups."}>
               {student.strengths || "The student has demonstrated strong practical engagement during computing lab setups."}
             </p>
           </div>
 
-          <div className="border border-slate-200 rounded-lg p-2.5 space-y-0.5 bg-slate-50">
+          <div className="border border-slate-200 rounded-lg p-2.5 space-y-1 bg-slate-50">
             <h4 className="font-bold uppercase tracking-wide text-blue-600 text-[8.5px] flex items-center gap-1">
-              <span className="w-1.2 h-1.2 rounded-full bg-blue-400" />
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
               Areas of Growth & Next Steps
             </h4>
-            <p className="text-[9.5px] text-slate-700 leading-relaxed font-normal italic">
+            <p className="text-[9.5px] text-slate-700 leading-relaxed font-normal italic line-clamp-4" title={student.areasOfImprovement || "Regular touch typing drills and homework submission revision are recommended."}>
               {student.areasOfImprovement || "Regular touch typing drills and homework submission revision are recommended."}
             </p>
           </div>
         </div>
 
         {/* Aggregate metrics */}
-        <div className="flex flex-row justify-between items-center bg-slate-50 border border-slate-200 rounded-lg p-2.5 gap-2 text-xs">
+        <div className="flex flex-row justify-between items-center bg-slate-50 border border-slate-200 rounded-lg p-3 gap-2 text-xs">
           <div>
             <strong className="block font-bold text-[9px] text-slate-700 uppercase tracking-wider">Overall Academic standing</strong>
             <span className="text-[8px] text-slate-400 font-mono">Calculated over all 5 grading weights (Passing mark: 35%)</span>
           </div>
           <div className="flex gap-3 items-center">
-            <div className="flex items-center gap-1 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 font-mono text-slate-800 text-[9.5px] font-bold">
+            <div className="flex items-center gap-1 bg-slate-100 border border-slate-200 rounded px-2 py-0.5 font-mono text-slate-800 text-[9.5px] font-bold">
               <span>Percentage:</span>
               <span className="font-extrabold">{calculateTotalScore(student.scores)}%</span>
             </div>
@@ -579,25 +583,25 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
         </div>
 
         {/* Signatures & Footer Block */}
-        <div className="mt-auto space-y-2.5 pt-2 border-t border-slate-200">
+        <div className="mt-0 space-y-2 pt-1.5 border-t border-slate-200">
           {/* Evaluator and Parent Signatures */}
-          <div className="grid grid-cols-2 gap-8 text-[10px] text-slate-900 pt-1">
+          <div className="grid grid-cols-2 gap-8 text-[9px] text-slate-900 pt-1">
             <div className="space-y-1">
-              <p className="font-extrabold uppercase tracking-widest text-slate-400 text-[8px]">Evaluator Signature</p>
-              <div className="border-b border-slate-300 w-full pt-1.5 h-4.5" />
-              <p className="text-[9px] font-bold text-slate-900 mt-1">Mr. Sudeep Shrestha (Teacher)</p>
-              <p className="text-[9px] font-bold text-slate-400 font-medium">Date: <span className="font-mono text-slate-900 font-bold">{student.date}</span></p>
+              <p className="font-extrabold uppercase tracking-widest text-slate-400 text-[7.5px]">Evaluator Signature</p>
+              <div className="border-b border-slate-300 w-full pt-1 h-3.5" />
+              <p className="text-[8.5px] font-bold text-slate-900 mt-1">Mr. Sudeep Shrestha (Teacher)</p>
+              <p className="text-[8.5px] font-bold text-slate-400 font-medium">Date: <span className="font-mono text-slate-900 font-bold">{student.date}</span></p>
             </div>
 
             <div className="space-y-1">
-              <p className="font-extrabold uppercase tracking-widest text-slate-400 text-[8px]">Parent / Guardian Signature</p>
-              <div className="border-b border-slate-300 w-full pt-1.5 h-4.5" />
-              <p className="text-[9px] font-bold text-slate-400 pt-2 font-mono">Date Checked: __________________</p>
+              <p className="font-extrabold uppercase tracking-widest text-slate-400 text-[7.5px]">Parent / Guardian Signature</p>
+              <div className="border-b border-slate-300 w-full pt-1 h-3.5" />
+              <p className="text-[8.5px] font-bold text-slate-400 pt-1.5 font-mono">Date Checked: __________________</p>
             </div>
           </div>
 
           {/* Tiny bottom tag */}
-          <div className="pt-2 border-t border-slate-100 flex justify-end items-center text-[8px] text-slate-400 font-mono">
+          <div className="pt-1.5 border-t border-slate-100 flex justify-end items-center text-[7.5px] text-slate-400 font-mono">
             <span>Page 1 of 1</span>
           </div>
         </div>
