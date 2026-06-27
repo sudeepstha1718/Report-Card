@@ -39,7 +39,8 @@ import {
   generateDefaultRemarks, 
   getRemarkByComponentAndRating,
   generateDefaultStrengthsAndImprovements,
-  exportToClassroomExcel 
+  exportToClassroomExcel,
+  parseClassAndSection
 } from "./lib/gradeUtils";
 
 // @ts-ignore
@@ -415,6 +416,7 @@ export default function App() {
     const previewStudent = students.find((s) => s.id === id);
     const params = new URLSearchParams(window.location.search);
     const mode = (params.get("mode") || "print") as "print" | "download";
+    const pvm = params.get("parentViewMode") !== "false";
     
     return (
       <PrintPreviewPage 
@@ -423,6 +425,7 @@ export default function App() {
         schoolName={schoolName} 
         motto={schoolMotto}
         logoUrl={schoolLogo}
+        parentViewMode={pvm}
       />
     );
   }
@@ -1109,6 +1112,8 @@ export default function App() {
         const rollStr = student.rollNo || "—";
         const filenameClean = `${student.name}-${phaseStr}-${student.grade}-${rollStr}`.replace(/[\/\\:*?"<>|]/g, "_");
 
+        const { className: pdfClassName, section: pdfSection } = parseClassAndSection(student.grade);
+
         const totalScore = calculateTotalScore(student.scores);
         const letterGrade = percentageToLetterGrade(totalScore);
         const isPassed = totalScore >= 35;
@@ -1140,22 +1145,26 @@ export default function App() {
               </div>
             </div>
 
-            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 8px; font-size: 10.5px;">
+            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; font-size: 10.5px;">
               <div>
                 <span style="font-size: 7.5px; text-transform: uppercase; font-weight: 800; color: #64748b;">Student Name</span>
-                <p style="margin: 2px 0 0 0; font-weight: 900; color: #0f172a; font-size: 11.5px;">${student.name}</p>
+                <p style="margin: 2px 0 0 0; font-weight: 900; color: #0f172a; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${student.name}</p>
               </div>
               <div>
-                <span style="font-size: 7.5px; text-transform: uppercase; font-weight: 800; color: #64748b;">Roll Number</span>
-                <p style="margin: 2px 0 0 0; font-weight: 900; color: #1d4ed8; font-family: monospace; font-size: 11.5px;">${student.rollNo || "—"}</p>
+                <span style="font-size: 7.5px; text-transform: uppercase; font-weight: 800; color: #64748b;">Class</span>
+                <p style="margin: 2px 0 0 0; font-weight: bold; color: #334155;">${pdfClassName}</p>
               </div>
               <div>
-                <span style="font-size: 7.5px; text-transform: uppercase; font-weight: 800; color: #64748b;">Grade / Section</span>
-                <p style="margin: 2px 0 0 0; font-weight: bold; color: #334155;">${student.grade}</p>
+                <span style="font-size: 7.5px; text-transform: uppercase; font-weight: 800; color: #64748b;">Section</span>
+                <p style="margin: 2px 0 0 0; font-weight: bold; color: #334155;">${pdfSection}</p>
               </div>
               <div>
                 <span style="font-size: 7.5px; text-transform: uppercase; font-weight: 800; color: #64748b;">Academic Batch</span>
                 <p style="margin: 2px 0 0 0; font-weight: 800; color: #334155;">${student.batch || "2083 BS"}</p>
+              </div>
+              <div>
+                <span style="font-size: 7.5px; text-transform: uppercase; font-weight: 800; color: #64748b;">Roll Number</span>
+                <p style="margin: 2px 0 0 0; font-weight: 900; color: #1d4ed8; font-family: monospace; font-size: 11px;">${student.rollNo || "—"}</p>
               </div>
               <div>
                 <span style="font-size: 7.5px; text-transform: uppercase; font-weight: 800; color: #64748b;">Term / Phase</span>
@@ -1165,9 +1174,9 @@ export default function App() {
                 <span style="font-size: 7.5px; text-transform: uppercase; font-weight: 800; color: #64748b;">Evaluation Date</span>
                 <p style="margin: 2px 0 0 0; font-family: monospace; color: #475569;">${student.date}</p>
               </div>
-              <div style="grid-column: span 2; text-align: right; align-self: center;">
-                <span style="font-size: 7.5px; text-transform: uppercase; font-weight: 800; color: #64748b; margin-right: 6px;">Overall Grade</span>
-                <span style="font-family: monospace; background-color: #0f172a; color: #ffffff; padding: 2.5px 7px; border-radius: 4px; font-weight: 900; font-size: 11px;">${letterGrade}</span>
+              <div>
+                <span style="font-size: 7.5px; text-transform: uppercase; font-weight: 800; color: #64748b;">Overall Grade</span>
+                <p style="margin: 2px 0 0 0;"><span style="font-family: monospace; background-color: #0f172a; color: #ffffff; padding: 1.5px 5px; border-radius: 4px; font-weight: 900; font-size: 10px;">${letterGrade}</span></p>
               </div>
             </div>
 
@@ -1364,7 +1373,7 @@ export default function App() {
       console.error("Local storage save error:", e);
     }
     
-    const url = `/print-preview/${activeStudent.id}?mode=${mode}`;
+    const url = `/print-preview/${activeStudent.id}?mode=${mode}&parentViewMode=${parentViewMode}`;
     triggerStatus(`Launching isolated high-fidelity print viewer for ${activeStudent.name}...`);
     
     try {
@@ -1651,8 +1660,8 @@ export default function App() {
       </header>
 
       {/* Sub-header Platform Workspace Tabs */}
-      <div className="bg-slate-900/10 border-b border-slate-250 py-3 px-6 flex flex-col sm:flex-row justify-between items-center gap-3 print:hidden shadow-sm z-30 bg-white">
-        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+      <div className="bg-slate-900/10 border-b border-slate-250 py-3 px-6 flex flex-col xl:flex-row justify-between items-center gap-3 print:hidden shadow-sm z-30 bg-white">
+        <div className="flex flex-wrap gap-2 w-full xl:w-auto items-center">
           <button
             type="button"
             onClick={() => setWorkspaceTab("editor")}
@@ -1696,6 +1705,38 @@ export default function App() {
             <Settings className="h-3.5 w-3.5 text-amber-500" />
             <span>🏫 School Logo & Branding</span>
           </button>
+
+          <div className="h-6 w-[1px] bg-slate-250 mx-1 hidden xl:block" />
+
+          {/* Global View Mode Toggle */}
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/85 w-full sm:w-auto justify-center">
+            <button
+              type="button"
+              onClick={() => setParentViewMode(true)}
+              className={`flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                parentViewMode 
+                  ? "bg-slate-900 text-white shadow-sm" 
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/55"
+              }`}
+              title="Official Parent Evaluation Sheet with 1-4 scale"
+            >
+              <EyeOff className="h-3 w-3 text-blue-400" />
+              <span>Official Parent 1-4</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setParentViewMode(false)}
+              className={`flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                !parentViewMode 
+                  ? "bg-slate-900 text-white shadow-sm" 
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/55"
+              }`}
+              title="Detailed Teacher view with raw marks"
+            >
+              <Eye className="h-3 w-3 text-emerald-400" />
+              <span>Detailed Teacher Marks</span>
+            </button>
+          </div>
         </div>
 
         {activeStudent ? (
@@ -2601,23 +2642,6 @@ export default function App() {
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active Evaluation</span>
                       <h3 className="text-lg font-extrabold text-slate-900 mt-0.5">{activeStudent.name}</h3>
                     </div>
-                    {/* View toggles to explain conversion */}
-                    <div className="text-xs flex items-center gap-1">
-                      <span className="text-slate-400 font-semibold">View Mode:</span>
-                      <button
-                        type="button"
-                        onClick={() => setParentViewMode(!parentViewMode)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all border ${
-                          parentViewMode 
-                            ? "bg-blue-650 text-white border-blue-650 shadow-sm shadow-blue-100" 
-                            : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-                        }`}
-                        title="Toggle disclosures of raw scores on the parent evaluation sheet"
-                      >
-                        {parentViewMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                        <span>{parentViewMode ? "Official Parent 1-4" : "Detailed Teacher Marks"}</span>
-                      </button>
-                    </div>
                   </div>
 
                   {/* Roster Demographics Updates */}
@@ -2990,43 +3014,52 @@ export default function App() {
                   </div>
 
                   {/* Candidate Info Grid / Student Info Grid */}
-                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 grid grid-cols-4 gap-y-2 gap-x-4 text-[11px] shadow-sm">
-                    <div className="col-span-2">
-                      <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Student Name</p>
-                      <p className="font-extrabold text-slate-900 text-sm">{activeStudent.name}</p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Grade / Section</p>
-                      <p className="font-bold text-slate-800 text-sm">{activeStudent.grade}</p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Academic Batch</p>
-                      <p className="font-extrabold text-slate-800 text-sm">{activeStudent.batch || "2083 BS"}</p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Roll Number</p>
-                      <p className="font-extrabold text-blue-700 font-mono text-sm">{activeStudent.rollNo || "—"}</p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Term / Phase</p>
-                      <p className="font-bold text-slate-800 text-sm">{activeStudent.phase || "Phase 1"}</p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Evaluation Date</p>
-                      <p className="font-mono text-slate-600 font-bold text-sm">{activeStudent.date}</p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400 font-bold">Overall Grade</p>
-                      <div className="mt-0.5">
-                        <span className="font-mono bg-slate-900 text-white rounded px-2 py-0.5 text-[10px] font-black inline-block">
-                          {percentageToLetterGrade(calculateTotalScore(activeStudent.scores))}
-                        </span>
+                  {(() => {
+                    const { className: activeClassName, section: activeSection } = parseClassAndSection(activeStudent.grade);
+                    return (
+                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 grid grid-cols-4 gap-y-2 gap-x-4 text-[11px] shadow-sm">
+                        <div>
+                          <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Student Name</p>
+                          <p className="font-extrabold text-slate-900 text-sm truncate" title={activeStudent.name}>{activeStudent.name}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Class</p>
+                          <p className="font-bold text-slate-800 text-sm">{activeClassName}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Section</p>
+                          <p className="font-bold text-slate-800 text-sm">{activeSection}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Academic Batch</p>
+                          <p className="font-extrabold text-slate-800 text-sm">{activeStudent.batch || "2083 BS"}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Roll Number</p>
+                          <p className="font-extrabold text-blue-700 font-mono text-sm">{activeStudent.rollNo || "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Term / Phase</p>
+                          <p className="font-bold text-slate-800 text-sm">{activeStudent.phase || "Phase 1"}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Evaluation Date</p>
+                          <p className="font-mono text-slate-600 font-bold text-sm">{activeStudent.date}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400 font-bold">Overall Grade</p>
+                          <div className="mt-0.5">
+                            <span className="font-mono bg-slate-900 text-white rounded px-2 py-0.5 text-[10px] font-black inline-block">
+                              {percentageToLetterGrade(calculateTotalScore(activeStudent.scores))}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
+                    );
+                  })()}
 
                   {/* Evaluation Criteria Descriptor Box */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 border-b border-slate-200 pb-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 border-b border-slate-200 pb-3 mt-3.5">
                     <div className="text-xs space-y-1.5 md:col-span-2">
                       <h3 className="font-bold uppercase tracking-wider text-slate-500 text-[10px]">Academic Grading Level Standards</h3>
                       <div className="grid grid-cols-4 sm:grid-cols-8 gap-1 text-[8.5px] leading-tight">
@@ -3074,7 +3107,7 @@ export default function App() {
                     </div>
 
                     <div className="text-xs space-y-1.5">
-                      <h3 className="font-bold uppercase tracking-wider text-slate-500 text-[10px]">Evaluation Rating Scale Legends</h3>
+                      <h3 className="font-bold uppercase tracking-wider text-slate-500 text-[10px]">Evaluation Scale</h3>
                       <div className="grid grid-cols-2 gap-1 text-[9px] leading-tight">
                         <div className="bg-slate-50 p-1 rounded border border-slate-200 flex items-center gap-1">
                           <span className="w-3.5 h-3.5 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-[8.5px] font-mono">4</span>
@@ -3100,11 +3133,11 @@ export default function App() {
                   <div className="overflow-x-auto pt-2">
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
-                        <tr className="border-b border-slate-300 text-slate-700 uppercase font-bold text-[9px] tracking-widest bg-slate-50">
-                          <th className="py-2 px-3 w-5/12">Grading Area Component</th>
-                          <th className="py-2 px-2 text-center w-2/12">Rating</th>
-                          <th className="py-2 px-2 text-center w-2/12">Evaluation Scale</th>
-                          <th className="py-2 px-3 w-3/12">Educator Remarks</th>
+                        <tr className="border-b-2 border-slate-400 text-slate-800 uppercase font-extrabold text-[10px] tracking-wider bg-transparent">
+                          <th className="py-2.5 px-3 w-5/12">Grading Area Component</th>
+                          <th className="py-2.5 px-2 text-center w-2/12">Rating</th>
+                          <th className="py-2.5 px-2 text-center w-2/12">Evaluation</th>
+                          <th className="py-2.5 px-3 w-3/12">Educator Remarks</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-slate-700">

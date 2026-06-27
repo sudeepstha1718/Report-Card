@@ -6,7 +6,8 @@ import {
   calculatePercentage, 
   percentageToRating, 
   percentageToLetterGrade, 
-  calculateTotalScore 
+  calculateTotalScore,
+  parseClassAndSection
 } from "../lib/gradeUtils";
 
 // @ts-ignore
@@ -98,6 +99,7 @@ interface PrintPreviewPageProps {
   schoolName: string;
   motto?: string;
   logoUrl?: string | null;
+  parentViewMode?: boolean;
 }
 
 export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
@@ -105,11 +107,14 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
   mode,
   schoolName,
   motto,
-  logoUrl
+  logoUrl,
+  parentViewMode = true
 }) => {
   const [status, setStatus] = useState<string>("Initializing page renderer...");
   const [isCompleted, setIsCompleted] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>("");
+
+  const { className, section } = parseClassAndSection(student?.grade || "");
 
   useEffect(() => {
     if (!student) {
@@ -348,10 +353,10 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
       {/* Standard Mount Annapurna Print Sheet Wrapper */}
       <div 
         id="printable-report-card" 
-        className="w-[210mm] h-[297mm] min-h-[297mm] max-h-[297mm] bg-white text-slate-900 flex flex-col justify-between py-[10mm] px-[12mm] border border-slate-300 shadow-2xl rounded-2xl box-sizing-border font-sans relative overflow-hidden"
+        className="w-[210mm] h-[297mm] min-h-[297mm] max-h-[297mm] bg-white text-slate-900 flex flex-col justify-between py-[7.5mm] px-[12mm] border border-slate-300 shadow-2xl rounded-2xl box-sizing-border font-sans relative overflow-hidden"
       >
         {/* Header Block with School Logo */}
-        <div className="flex justify-between items-center border-b-2 border-slate-800 pb-2">
+        <div className="flex justify-between items-center border-b-2 border-slate-800 pb-1.5">
           <div className="w-[145mm]">
             <SchoolLogo 
               className="h-14 w-auto" 
@@ -371,14 +376,18 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
         </div>
 
         {/* Student Info Card */}
-        <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 grid grid-cols-4 gap-y-2 gap-x-4 text-[11px] shadow-sm">
-          <div className="col-span-2">
+        <div className="bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 grid grid-cols-4 gap-y-1 gap-x-4 text-[11px] shadow-sm">
+          <div>
             <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Student Name</p>
-            <p className="font-extrabold text-slate-900 text-sm">{student.name}</p>
+            <p className="font-extrabold text-slate-900 text-sm truncate" title={student.name}>{student.name}</p>
           </div>
           <div>
-            <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Grade / Section</p>
-            <p className="font-bold text-slate-800 text-sm">{student.grade}</p>
+            <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Class</p>
+            <p className="font-bold text-slate-800 text-sm">{className}</p>
+          </div>
+          <div>
+            <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Section</p>
+            <p className="font-bold text-slate-800 text-sm">{section}</p>
           </div>
           <div>
             <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Academic Batch</p>
@@ -407,10 +416,10 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
         </div>
 
         {/* Academic Grading Details & Rating Legends */}
-        <div className="grid grid-cols-3 gap-3 border-b border-slate-200 pb-2">
+        <div className="grid grid-cols-3 gap-3 border-b border-slate-200 pb-1.5 mt-2.5">
           <div className="text-xs space-y-1 col-span-2">
             <h3 className="font-extrabold uppercase tracking-wide text-slate-500 text-[8px]">Academic Grading Level Standards</h3>
-            <div className="grid grid-cols-8 gap-0.5 text-[7.2px] leading-tight-none h-[42px]">
+            <div className="grid grid-cols-8 gap-0.5 text-[7.2px] leading-tight-none h-[39px]">
               <div className="bg-slate-50 p-1 rounded border border-slate-200 text-center flex flex-col justify-between h-full">
                 <strong className="text-slate-900 block font-black text-[9.5px]">A+</strong>
                 <span className="text-slate-500 block font-bold font-mono text-[6.8px] leading-none my-0.2">(90%+)</span>
@@ -455,7 +464,7 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
           </div>
 
           <div className="text-xs space-y-1">
-            <h3 className="font-extrabold uppercase tracking-wide text-slate-500 text-[8px]">Evaluation Scale Legends</h3>
+            <h3 className="font-extrabold uppercase tracking-wide text-slate-500 text-[8px]">Evaluation Scale</h3>
             <div className="grid grid-cols-2 gap-1 text-[8px] leading-tight">
               <div className="bg-slate-50 p-1 rounded border border-slate-200 flex items-center gap-1">
                 <span className="print-num-circle print-num-circle-active">4</span>
@@ -481,11 +490,11 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-[11px]">
             <thead>
-              <tr className="border-b border-slate-350 text-slate-700 uppercase font-bold text-[8px] tracking-widest bg-slate-50">
-                <th className="py-1.8 px-3 w-5/12">Grading Area Component</th>
-                <th className="py-1.8 px-3 text-center w-2/12">Rating</th>
-                <th className="py-1.8 px-3 text-center w-2/12">Evaluation Scale</th>
-                <th className="py-1.8 px-3 w-3/12">Educator Remarks</th>
+              <tr className="border-b-2 border-slate-400 text-slate-800 uppercase font-extrabold text-[10px] tracking-wider bg-transparent">
+                <th className="py-1.5 px-3 w-5/12">Grading Area Component</th>
+                <th className="py-1.5 px-3 text-center w-2/12">Rating</th>
+                <th className="py-1.5 px-3 text-center w-2/12">Evaluation</th>
+                <th className="py-1.5 px-3 w-3/12">Educator Remarks</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-755 font-sans">
@@ -495,17 +504,24 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
                 const pct = calculatePercentage(rawScore, comp.maxScore);
                 const rating = percentageToRating(pct);
 
+                const rowPaddingY = !parentViewMode ? "py-1" : "py-1.5";
+
                 return (
                   <tr key={key} className="align-top">
-                    <td className="py-2.5 px-3 space-y-0.5">
+                    <td className={`${rowPaddingY} px-3 space-y-0.5`}>
                       <span className="font-bold text-slate-900 block leading-tight text-[11px]">
                         {comp.name}
                       </span>
                       <span className="text-[9px] text-slate-450 block font-normal leading-normal">
                         {comp.description}
                       </span>
+                      {!parentViewMode && (
+                        <span className="inline-block text-[8.5px] font-mono font-extrabold bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded mt-0.5 border border-slate-200">
+                          Raw Marks: {rawScore}/{comp.maxScore} ({pct}%)
+                        </span>
+                      )}
                     </td>
-                    <td className="py-2.5 px-3 text-center">
+                    <td className={`${rowPaddingY} px-3 text-center`}>
                       <div className="flex justify-center items-center gap-1 font-mono">
                         {[1, 2, 3, 4].map((num) => {
                           const isMatched = num === rating;
@@ -522,12 +538,12 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
                         })}
                       </div>
                     </td>
-                    <td className="py-2.5 px-3 text-center font-bold text-slate-800 text-[9px] font-mono">
+                    <td className={`${rowPaddingY} px-3 text-center font-bold text-slate-800 text-[9px] font-mono`}>
                       <span className="inline-block px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200">
                         {student.afterSupport[key] || "Excellent"}
                       </span>
                     </td>
-                    <td className="py-2.5 px-3 text-[9.5px] text-slate-650 leading-normal font-normal italic">
+                    <td className={`${rowPaddingY} px-3 text-[9.5px] text-slate-650 leading-normal font-normal italic`}>
                       <div className="line-clamp-3" title={student.remarks[key] || "No custom remarks shared."}>
                         {student.remarks[key] || "No custom remarks shared."}
                       </div>
@@ -540,30 +556,30 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
         </div>
 
         {/* Growth and Remarks block */}
-        <div className="grid grid-cols-2 gap-3.5 pt-1.5 border-t border-slate-200">
-          <div className="border border-slate-200 rounded-lg p-2.5 space-y-1 bg-slate-50">
+        <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-200">
+          <div className="border border-slate-200 rounded-lg p-2 space-y-0.5 bg-slate-50">
             <h4 className="font-bold uppercase tracking-wide text-blue-600 text-[8.5px] flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
               Student Computing Strengths
             </h4>
-            <p className="text-[9.5px] text-slate-700 leading-relaxed font-normal italic line-clamp-4" title={student.strengths || "The student has demonstrated strong practical engagement during computing lab setups."}>
+            <p className="text-[9.5px] text-slate-700 leading-relaxed font-normal italic line-clamp-3" title={student.strengths || "The student has demonstrated strong practical engagement during computing lab setups."}>
               {student.strengths || "The student has demonstrated strong practical engagement during computing lab setups."}
             </p>
           </div>
 
-          <div className="border border-slate-200 rounded-lg p-2.5 space-y-1 bg-slate-50">
+          <div className="border border-slate-200 rounded-lg p-2 space-y-0.5 bg-slate-50">
             <h4 className="font-bold uppercase tracking-wide text-blue-600 text-[8.5px] flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
               Areas of Growth & Next Steps
             </h4>
-            <p className="text-[9.5px] text-slate-700 leading-relaxed font-normal italic line-clamp-4" title={student.areasOfImprovement || "Regular touch typing drills and homework submission revision are recommended."}>
+            <p className="text-[9.5px] text-slate-700 leading-relaxed font-normal italic line-clamp-3" title={student.areasOfImprovement || "Regular touch typing drills and homework submission revision are recommended."}>
               {student.areasOfImprovement || "Regular touch typing drills and homework submission revision are recommended."}
             </p>
           </div>
         </div>
 
         {/* Aggregate metrics */}
-        <div className="flex flex-row justify-between items-center bg-slate-50 border border-slate-200 rounded-lg p-3 gap-2 text-xs">
+        <div className="flex flex-row justify-between items-center bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-2.5 gap-2 text-xs">
           <div>
             <strong className="block font-bold text-[9px] text-slate-700 uppercase tracking-wider">Overall Academic standing</strong>
             <span className="text-[8px] text-slate-400 font-mono">Calculated over all 5 grading weights (Passing mark: 35%)</span>
@@ -583,9 +599,9 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
         </div>
 
         {/* Signatures & Footer Block */}
-        <div className="mt-0 space-y-2 pt-1.5 border-t border-slate-200">
+        <div className="mt-0 space-y-1.5 pt-1.5 border-t border-slate-200">
           {/* Evaluator and Parent Signatures */}
-          <div className="grid grid-cols-2 gap-8 text-[9px] text-slate-900 pt-1">
+          <div className="grid grid-cols-2 gap-6 text-[9px] text-slate-900 pt-0.5">
             <div className="space-y-1">
               <p className="font-extrabold uppercase tracking-widest text-slate-400 text-[7.5px]">Evaluator Signature</p>
               <div className="border-b border-slate-300 w-full pt-1 h-3.5" />

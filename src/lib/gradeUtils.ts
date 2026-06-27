@@ -470,3 +470,22 @@ export function exportToClassroomExcel(students: StudentRecord[]) {
   const academicYear = new Date().getFullYear();
   XLSX.writeFile(wb, `CS_Student_Evaluation_Ledger_${academicYear}.xlsx`);
 }
+
+/**
+ * Safely parses the grade string into structured Class and Section names.
+ * For example: "Class 3A" -> { className: "Class 3", section: "A" }
+ */
+export function parseClassAndSection(grade: string): { className: string; section: string } {
+  const trimmed = (grade || "").trim();
+  const match = trimmed.match(/^(.+?)(?:\s*[-/]?\s*([A-Za-z]))$/);
+  if (match) {
+    return {
+      className: match[1].trim(),
+      section: match[2].trim().toUpperCase()
+    };
+  }
+  return {
+    className: trimmed,
+    section: "—"
+  };
+}
