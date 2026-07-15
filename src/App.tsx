@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import * as XLSX from "xlsx";
 import { 
   GraduationCap, 
   Plus, 
@@ -198,16 +199,23 @@ export default function App() {
   const [hasUnsaved, setHasUnsaved] = useState(false);
 
   const [students, setStudents] = useState<StudentRecord[]>(() => {
+    // Check if user has already migrated or customized their data
+    const hasMigrated = typeof window !== "undefined" && localStorage.getItem("edugrade_migrated_to_v3") === "true";
+
     // 1. Try opener's localStorage (highly likely since spawned by window.open)
     try {
       if (typeof window !== "undefined" && window.opener && !window.opener.closed) {
         const openerSaved = window.opener.localStorage.getItem("edugrade_students");
         if (openerSaved) {
           const parsed = JSON.parse(openerSaved);
-          // If stored records lack Class 3A or Class 3B, or only contain a single phase (53 students), force update to complete list
-          const hasNew = parsed.some((s: any) => s.grade === "Class 3A" || s.grade === "Class 3B");
-          const hasAllPhases = parsed.length >= 150;
-          if (!hasNew || !hasAllPhases) {
+          if (hasMigrated) {
+            return parsed;
+          }
+          // Legacy migration check: if list is exactly 53, it is the legacy dataset, so migrate to CLASS_3_STUDENTS
+          if (parsed.length === 53) {
+            localStorage.setItem("edugrade_migrated_to_v3", "true");
+            window.opener.localStorage.setItem("edugrade_migrated_to_v3", "true");
+            window.opener.localStorage.setItem("edugrade_students", JSON.stringify(CLASS_3_STUDENTS));
             return CLASS_3_STUDENTS;
           }
           return parsed;
@@ -221,11 +229,13 @@ export default function App() {
       const saved = localStorage.getItem("edugrade_students");
       if (saved) {
         const parsed = JSON.parse(saved);
-        // If stored records lack Class 3A or Class 3B, or only contain a single phase, force update
-        const hasNew = parsed.some((s: any) => s.grade === "Class 3A" || s.grade === "Class 3B");
-        const hasAllPhases = parsed.length >= 150;
-        if (!hasNew || !hasAllPhases) {
+        if (hasMigrated) {
+          return parsed;
+        }
+        // Legacy migration check: if list is exactly 53, it is the legacy dataset, so migrate to CLASS_3_STUDENTS
+        if (parsed.length === 53) {
           localStorage.setItem("edugrade_students", JSON.stringify(CLASS_3_STUDENTS));
+          localStorage.setItem("edugrade_migrated_to_v3", "true");
           return CLASS_3_STUDENTS;
         }
         return parsed;
@@ -233,7 +243,12 @@ export default function App() {
     } catch (e) {
       console.warn("Could not read from own localStorage", e);
     }
-    // 3. Fallback
+    // 3. Fallback: If no saved data, return the complete CLASS_3_STUDENTS and set migrated flag to true
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("edugrade_migrated_to_v3", "true");
+      }
+    } catch (e) {}
     return CLASS_3_STUDENTS;
   });
 
@@ -489,6 +504,7 @@ export default function App() {
       localStorage.setItem("edugrade_students", JSON.stringify(students));
       localStorage.setItem("edugrade_schoolName", schoolName);
       localStorage.setItem("edugrade_schoolMotto", schoolMotto);
+      localStorage.setItem("edugrade_migrated_to_v3", "true");
       if (schoolLogo) {
         localStorage.setItem("school_logo", schoolLogo);
       } else {
@@ -899,7 +915,7 @@ export default function App() {
     triggerStatus("Class ledger Excel sheet generated successfully!");
   };
 
-  const downloadCSVTemplate = () => {
+  const downloadExcelTemplate = () => {
     const headers = [
       "Student ID",
       "Roll No",
@@ -929,48 +945,56 @@ export default function App() {
       st.scores.lab
     ]);
 
-    const csvContent = [
-      headers.join(","),
-      ...rows.map(row => row.map(val => {
-        const str = String(val);
-        if (str.includes(",") || str.includes('"') || str.includes("\n")) {
-          return `"${str.replace(/"/g, '""')}"`;
-        }
-        return str;
-      }).join(","))
-    ].join("\n");
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
 
-    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    const classTag = classFilter === "all" ? "All_Classes" : classFilter.replace(/\s+/g, "_");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `EduGrade_Marks_Template_${classTag}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Apply stunning, spacious column widths so everything is completely readable in Microsoft Excel or Google Sheets
+    ws["!cols"] = [
+      { wch: 15 }, // Student ID
+      { wch: 12 }, // Roll No
+      { wch: 25 }, // Student Name
+      { wch: 16 }, // Grade
+      { wch: 14 }, // Phase
+      { wch: 14 }, // Batch
+      { wch: 25 }, // Participation (Max 10)
+      { wch: 22 }, // Homework (Max 10)
+      { wch: 18 }, // MCQ (Max 30)
+      { wch: 20 }, // Project (Max 30)
+      { wch: 18 }  // Lab (Max 20)
+    ];
+
+    XLSX.utils.book_append_sheet(wb, ws, "Class Marks Entry");
     
-    triggerStatus(`🎉 Downloaded CSV template with ${filteredStudents.length} student listings!`);
+    const classTag = classFilter === "all" ? "All_Classes" : classFilter.replace(/\s+/g, "_");
+    XLSX.writeFile(wb, `EduGrade_Marks_Template_${classTag}.xlsx`);
+    
+    triggerStatus(`🎉 Downloaded Excel template (.xlsx) with ${filteredStudents.length} student listings!`);
   };
 
-  const handleCSVUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSpreadsheetUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const text = event.target?.result as string;
-        if (!text) return;
+        const data = event.target?.result;
+        if (!data) return;
 
-        const lines = text.split(/\r?\n/);
-        if (lines.length < 2) {
-          triggerStatus("❌ Error: Invalid CSV file or template format.");
+        // Read using XLSX (handles .xlsx, .xls, and .csv automatically!)
+        const workbook = XLSX.read(data, { type: "array" });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        
+        // Convert to 2D array of raw values
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+        if (jsonData.length < 2) {
+          triggerStatus("❌ Error: Invalid spreadsheet format or empty sheet.");
           return;
         }
 
         // Parse headers
-        const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, "").toLowerCase());
+        const headers = (jsonData[0] || []).map(h => String(h || "").trim().replace(/^"|"$/g, "").toLowerCase());
         
         const idIdx = headers.findIndex(h => h.includes("student id") || h === "id");
         const partIdx = headers.findIndex(h => h.includes("participation"));
@@ -983,37 +1007,18 @@ export default function App() {
         const batchIdx = headers.findIndex(h => h.includes("batch"));
 
         if (idIdx === -1) {
-          triggerStatus("❌ Error: 'Student ID' column is missing from the CSV.");
+          triggerStatus("❌ Error: 'Student ID' column is missing from the sheet.");
           return;
         }
 
         let updatedCount = 0;
         const updatedStudents = [...students];
 
-        for (let i = 1; i < lines.length; i++) {
-          const line = lines[i].trim();
-          if (!line) continue;
+        for (let i = 1; i < jsonData.length; i++) {
+          const row = jsonData[i];
+          if (!row || row.length === 0) continue;
 
-          // Split line respecting commas inside double quotes
-          const columns: string[] = [];
-          let curVal = "";
-          let inQuotes = false;
-          for (let j = 0; j < line.length; j++) {
-            const char = line[j];
-            if (char === '"') {
-              inQuotes = !inQuotes;
-            } else if (char === ',' && !inQuotes) {
-              columns.push(curVal.trim().replace(/^"|"$/g, ""));
-              curVal = "";
-            } else {
-              curVal += char;
-            }
-          }
-          columns.push(curVal.trim().replace(/^"|"$/g, ""));
-
-          if (columns.length < 1) continue;
-
-          const studentId = columns[idIdx];
+          const studentId = row[idIdx] !== undefined && row[idIdx] !== null ? String(row[idIdx]).trim() : "";
           if (!studentId) continue;
 
           const studentIndex = updatedStudents.findIndex(s => s.id === studentId);
@@ -1022,37 +1027,43 @@ export default function App() {
             s.scores = { ...s.scores };
 
             // Apply clamped grade updates
-            if (partIdx !== -1 && columns[partIdx] !== undefined && columns[partIdx] !== "") {
-              const val = parseInt(columns[partIdx]) || 0;
+            if (partIdx !== -1 && row[partIdx] !== undefined && row[partIdx] !== null && row[partIdx] !== "") {
+              const val = parseInt(String(row[partIdx])) || 0;
               s.scores.participation = Math.max(0, Math.min(10, val));
             }
-            if (hwIdx !== -1 && columns[hwIdx] !== undefined && columns[hwIdx] !== "") {
-              const val = parseInt(columns[hwIdx]) || 0;
+            if (hwIdx !== -1 && row[hwIdx] !== undefined && row[hwIdx] !== null && row[hwIdx] !== "") {
+              const val = parseInt(String(row[hwIdx])) || 0;
               s.scores.homework = Math.max(0, Math.min(10, val));
             }
-            if (mcqIdx !== -1 && columns[mcqIdx] !== undefined && columns[mcqIdx] !== "") {
-              const val = parseInt(columns[mcqIdx]) || 0;
+            if (mcqIdx !== -1 && row[mcqIdx] !== undefined && row[mcqIdx] !== null && row[mcqIdx] !== "") {
+              const val = parseInt(String(row[mcqIdx])) || 0;
               s.scores.mcq = Math.max(0, Math.min(30, val));
             }
-            if (projIdx !== -1 && columns[projIdx] !== undefined && columns[projIdx] !== "") {
-              const val = parseInt(columns[projIdx]) || 0;
+            if (projIdx !== -1 && row[projIdx] !== undefined && row[projIdx] !== null && row[projIdx] !== "") {
+              const val = parseInt(String(row[projIdx])) || 0;
               s.scores.project = Math.max(0, Math.min(30, val));
             }
-            if (labIdx !== -1 && columns[labIdx] !== undefined && columns[labIdx] !== "") {
-              const val = parseInt(columns[labIdx]) || 0;
+            if (labIdx !== -1 && row[labIdx] !== undefined && row[labIdx] !== null && row[labIdx] !== "") {
+              const val = parseInt(String(row[labIdx])) || 0;
               s.scores.lab = Math.max(0, Math.min(20, val));
             }
             
             // Apply student meta if provided
-            if (rollIdx !== -1 && columns[rollIdx] !== undefined && columns[rollIdx] !== "") {
-              s.rollNo = columns[rollIdx];
+            if (rollIdx !== -1 && row[rollIdx] !== undefined && row[rollIdx] !== null && row[rollIdx] !== "") {
+              s.rollNo = String(row[rollIdx]).trim();
             }
-            if (phaseIdx !== -1 && columns[phaseIdx] !== undefined && columns[phaseIdx] !== "") {
-              s.phase = columns[phaseIdx];
+            if (phaseIdx !== -1 && row[phaseIdx] !== undefined && row[phaseIdx] !== null && row[phaseIdx] !== "") {
+              s.phase = String(row[phaseIdx]).trim();
             }
-            if (batchIdx !== -1 && columns[batchIdx] !== undefined && columns[batchIdx] !== "") {
-              s.batch = columns[batchIdx];
+            if (batchIdx !== -1 && row[batchIdx] !== undefined && row[batchIdx] !== null && row[batchIdx] !== "") {
+              s.batch = String(row[batchIdx]).trim();
             }
+
+            // Also regenerate remarks and feedback based on the new scores so everything remains in sync
+            s.remarks = generateDefaultRemarks(s.scores);
+            const feedback = generateDefaultStrengthsAndImprovements(s.scores);
+            s.strengths = feedback.strengths;
+            s.areasOfImprovement = feedback.areasOfImprovement;
 
             updatedStudents[studentIndex] = s;
             updatedCount++;
@@ -1062,16 +1073,18 @@ export default function App() {
         if (updatedCount > 0) {
           setStudents(updatedStudents);
           setHasUnsaved(true);
-          triggerStatus(`🎉 Success: Parsed template and updated marks for ${updatedCount} students!`);
+          localStorage.setItem("edugrade_migrated_to_v3", "true"); // Always lock in custom modifications
+          triggerStatus(`🎉 Success: Synced marks and auto-generated evaluations for ${updatedCount} students!`);
         } else {
-          triggerStatus("⚠️ CSV parsing done, but matched zero active student records.");
+          triggerStatus("⚠️ Spreadsheet loaded, but matched zero active student records.");
         }
       } catch (err) {
         console.error(err);
-        triggerStatus("❌ Error: Failed to parse uploaded file. Please verify CSV encoding.");
+        triggerStatus("❌ Error: Failed to parse uploaded spreadsheet. Make sure it's a valid Excel or CSV.");
       }
     };
-    reader.readAsText(file);
+
+    reader.readAsArrayBuffer(file);
     e.target.value = "";
   };
 
@@ -2322,9 +2335,9 @@ export default function App() {
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={downloadCSVTemplate}
-                    className="flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 border-b-2 border-slate-300 text-slate-75 * text-slate-700 font-bold text-[10.5px] py-1.5 px-2.5 rounded-lg border border-slate-200/80 transition cursor-pointer shadow-sm whitespace-nowrap"
-                    title="Download clean CSV template pre-populated with currently filtered students names/IDs/scores"
+                    onClick={downloadExcelTemplate}
+                    className="flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 border-b-2 border-slate-300 text-slate-700 font-bold text-[10.5px] py-1.5 px-2.5 rounded-lg border border-slate-200/80 transition cursor-pointer shadow-sm whitespace-nowrap"
+                    title="Download clean Excel (.xlsx) template pre-populated with currently filtered students' names/IDs/scores with auto-sized columns"
                   >
                     <Download className="h-3 w-3 text-slate-500 shrink-0" />
                     <span>Download format</span>
@@ -2332,15 +2345,15 @@ export default function App() {
                   
                   <label
                     className="flex items-center justify-center gap-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[10.5px] py-1.5 px-2 rounded-lg border border-blue-200 border-b-2 border-blue-300 transition cursor-pointer shadow-sm text-center whitespace-nowrap"
-                    title="Upload edited CSV to synchronize marks at once"
+                    title="Upload edited Excel or CSV to synchronize marks at once"
                   >
                     <Upload className="h-3 w-3 text-blue-600 shrink-0" />
-                    <span>Upload CSV</span>
+                    <span>Upload spreadsheet</span>
                     <input
                       type="file"
-                      accept=".csv"
+                      accept=".xlsx,.xls,.csv"
                       className="hidden"
-                      onChange={handleCSVUpload}
+                      onChange={handleSpreadsheetUpload}
                     />
                   </label>
                 </div>
