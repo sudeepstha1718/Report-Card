@@ -7,6 +7,52 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+function getStudentPronouns(name: string) {
+  const normalized = (name || "").trim().toLowerCase();
+  const femaleKeywords = [
+    "aarubi", "anusuruya", "dipshikha", "jenisha", "kenzina", "pallavi", "prinsa", "shaira", "subina", "syaron", "tanauja",
+    "ami", "anjila", "arika", "ashariya", "diya", "grace", "monali", "nancy", "prasansha", "rashika", "sahisa", "samriddri", "sanvi", "saraswoti"
+  ];
+  const maleKeywords = [
+    "aabish", "aron", "anon", "anubhav", "nijon", "rainer", "rihan", "rushank", "sahil", "saimon", "samrit", "seejan", "sohan", "yobin", "yogesh",
+    "ankit", "arpan", "krishal", "nipshan", "prabhash", "riyans", "roman", "royal", "sparsh", "sushant", "swapnil", "unique"
+  ];
+
+  const firstWord = normalized.split(/\s+/)[0];
+  let isFemale = false;
+  if (femaleKeywords.some(f => firstWord.includes(f) || normalized.includes(f))) {
+    isFemale = true;
+  } else if (maleKeywords.some(m => firstWord.includes(m) || normalized.includes(m))) {
+    isFemale = false;
+  } else {
+    const endsWithA = firstWord.endsWith("a") && !firstWord.endsWith("indra") && !firstWord.endsWith("endra") && !firstWord.endsWith("shra");
+    const endsWithI = firstWord.endsWith("i") || firstWord.endsWith("y");
+    if (endsWithA || endsWithI || firstWord.endsWith("ee") || firstWord.endsWith("sha") || firstWord.endsWith("ya") || normalized.includes("kumari") || normalized.includes("devi")) {
+      isFemale = true;
+    } else {
+      isFemale = false;
+    }
+  }
+
+  if (isFemale) {
+    return {
+      subject: "She",
+      subjectLower: "she",
+      object: "her",
+      possessive: "her",
+      possessiveAdj: "her"
+    };
+  } else {
+    return {
+      subject: "He",
+      subjectLower: "he",
+      object: "him",
+      possessive: "his",
+      possessiveAdj: "his"
+    };
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -31,21 +77,22 @@ async function startServer() {
       if (!hasValidKey) {
         // High-quality contextual fallback comments for instant usability even without configured keys
         const total = (scores.participation || 0) + (scores.homework || 0) + (scores.mcq || 0) + (scores.project || 0) + (scores.lab || 0);
+        const pron = getStudentPronouns(name || "");
         let strengthText = "";
         let improvementText = "";
 
         if (total >= 85) {
-          strengthText = `${name || "The student"} demonstrates wonderful progress in all parts of computer class. They stay very focused during lessons and show excellent creativity in practical activities.`;
-          improvementText = `To continue growing, they are encouraged to explore advanced computer activities or help friends who are still learning. Keep up the brilliant effort!`;
+          strengthText = `${name || "The student"} demonstrates wonderful progress in all parts of computer class. ${pron.subject} stays very focused during lessons and shows excellent creativity in practical activities.`;
+          improvementText = `To continue growing, ${pron.subjectLower} is encouraged to explore advanced computer activities or help friends who are still learning. Keep up the brilliant effort!`;
         } else if (total >= 70) {
-          strengthText = `${name || "The student"} consistently completes their computer lab exercises on time and has a solid understanding of theoretical topics. They participate nicely in class.`;
-          improvementText = `Spending a tiny bit more time double-checking their work before submitting will help them reach even higher grades. They should feel proud of their effort!`;
+          strengthText = `${name || "The student"} consistently completes ${pron.possessiveAdj} computer lab exercises on time and has a solid understanding of theoretical topics. ${pron.subject} participates nicely in class.`;
+          improvementText = `Spending a tiny bit more time double-checking ${pron.possessiveAdj} work before submitting will help ${pron.object} reach even higher grades. ${pron.subject} should feel proud of ${pron.possessiveAdj} effort!`;
         } else if (total >= 50) {
           strengthText = `${name || "The student"} demonstrates a satisfactory understanding of basic computer ideas and coordinates well during practical computer lab time.`;
-          improvementText = `Recommended to practice comfortable keyboard typing drills at home and focus more when instructions are given. We are excited to see them grow!`;
+          improvementText = `Recommended to practice comfortable keyboard typing drills at home and focus more when instructions are given. We are excited to see ${pron.object} grow!`;
         } else {
-          strengthText = `${name || "The student"} comes to the computer room with a happy, friendly smile. They follow class rules well and always try their best when given guided steps.`;
-          improvementText = `They will benefit from practicing simple typing drills at home and paying closer attention when the teacher explains tasks. With steady practice, they will surely improve!`;
+          strengthText = `${name || "The student"} comes to the computer room with a happy, friendly smile. ${pron.subject} follows class rules well and always tries ${pron.possessiveAdj} best when given guided steps.`;
+          improvementText = `${pron.subject} will benefit from practicing simple typing drills at home and paying closer attention when the teacher explains tasks. With steady practice, ${pron.subjectLower} will surely improve!`;
         }
 
         return res.json({
@@ -68,7 +115,11 @@ async function startServer() {
         .map(([key, val]) => `${key}: ${val}`)
         .join(", ");
 
+      const pron = getStudentPronouns(name || "");
+      const genderText = pron.subject === "He" ? "Male (Use 'he', 'him', 'his' pronouns)" : "Female (Use 'she', 'her', 'hers' pronouns)";
+
       const prompt = `Student Name: ${name || "Sudeep"}
+Pronouns to Use: ${genderText}
 Grade Level: ${grade || "3"}
 Scores: ${scoresText} (Class Participation and Attentiveness out of 10, Homework and Independent Practice out of 10, Computer Concepts and Assessment out of 30, Creative Work and Projects out of 30, Practical Lab Performance out of 20).
 
@@ -76,6 +127,7 @@ Task: Generate an encouraging and professional Computer Studies report card rema
 Instructions:
 - Use professional, warm, and parent-friendly language.
 - Keep the English clear and natural—neither too simple nor too advanced.
+- CRITICAL: You MUST use the correct gender-specific pronouns (${genderText}). Do NOT use they/them/their.
 - Do not list numerical scores or grades anywhere. Instead, explain the overall performance.
 - Mention the student's strengths based on their highest-performing score areas.
 - Mention one or two areas for improvement based on their lower-performing score areas.

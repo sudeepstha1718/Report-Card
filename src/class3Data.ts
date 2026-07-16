@@ -69,16 +69,14 @@ function buildStudentList(): StudentRecord[] {
   const currentDate = new Date().toISOString().split("T")[0];
   const phases = ["Phase 1", "Phase 2", "Phase 3", "Phase 4"];
 
-  // Helper to generate dynamic, realistic scores to make the report card look rich and ready
+  // Helper to initialize all scores to zero for clean entry
   const getScores = (index: number, phase: string): ScoreComponents => {
-    // Introduce a little variation based on phase so that different phases have different values
-    const phaseOffset = phase === "Phase 1" ? 0 : phase === "Phase 2" ? 1 : phase === "Phase 3" ? 2 : 3;
     return {
-      participation: Math.min(10, Math.max(5, 7 + ((index + phaseOffset) % 4))), // 7 to 10
-      homework: Math.min(10, Math.max(5, 7 + ((index + phaseOffset + 1) % 4))),  // 7 to 10
-      mcq: Math.min(30, Math.max(12, 18 + (((index + phaseOffset) * 3) % 13))),    // 18 to 30
-      project: Math.min(30, Math.max(12, 18 + (((index + phaseOffset) * 2) % 13))), // 18 to 30
-      lab: Math.min(20, Math.max(10, 13 + ((index + phaseOffset + 2) % 8)))      // 13 to 20
+      participation: 0,
+      homework: 0,
+      mcq: 0,
+      project: 0,
+      lab: 0
     };
   };
 

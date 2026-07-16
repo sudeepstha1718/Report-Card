@@ -7,7 +7,8 @@ import {
   percentageToRating, 
   percentageToLetterGrade, 
   calculateTotalScore,
-  parseClassAndSection
+  parseClassAndSection,
+  getTodayDateString
 } from "../lib/gradeUtils";
 
 // @ts-ignore
@@ -403,7 +404,7 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
           </div>
           <div>
             <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Evaluation Date</p>
-            <p className="font-mono text-slate-600 font-bold text-sm">{student.date}</p>
+            <p className="font-mono text-slate-600 font-bold text-sm">{getTodayDateString()}</p>
           </div>
           <div>
             <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400 font-bold">Overall Grade</p>
@@ -419,7 +420,7 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
         <div className="grid grid-cols-3 gap-3 border-b border-slate-200 pb-1.5 mt-2.5">
           <div className="text-xs space-y-1 col-span-2">
             <h3 className="font-extrabold uppercase tracking-wide text-slate-500 text-[8px]">Academic Grading Level Standards</h3>
-            <div className="grid grid-cols-8 gap-0.5 text-[7.2px] leading-tight-none h-[39px]">
+            <div className="grid grid-cols-7 gap-0.5 text-[7.2px] leading-tight-none h-[39px]">
               <div className="bg-slate-50 p-1 rounded border border-slate-200 text-center flex flex-col justify-between h-full">
                 <strong className="text-slate-900 block font-black text-[9.5px]">A+</strong>
                 <span className="text-slate-500 block font-bold font-mono text-[6.8px] leading-none my-0.2">(90%+)</span>
@@ -452,13 +453,8 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
               </div>
               <div className="bg-slate-50 p-1 rounded border border-slate-200 text-center flex flex-col justify-between h-full">
                 <strong className="text-slate-900 block font-black text-[9.5px]">D</strong>
-                <span className="text-slate-500 block font-semibold font-mono text-[7px] leading-none my-0.2">(35-39%)</span>
-                <span className="text-slate-400 block text-[6.2px] mt-auto">Basic</span>
-              </div>
-              <div className="bg-slate-50 p-1 rounded border border-slate-200 text-center flex flex-col justify-between h-full">
-                <strong className="text-slate-900 block font-black text-[9.5px]">NG</strong>
-                <span className="text-rose-500 block font-semibold font-mono text-[7px] leading-none my-0.2">(&lt;35%)</span>
-                <span className="text-rose-500 block text-[6.2px] mt-auto font-bold">Ungraded</span>
+                <span className="text-amber-600 block font-semibold font-mono text-[7px] leading-none my-0.2">(&lt;40%)</span>
+                <span className="text-amber-600 block text-[6.2px] mt-auto font-bold">Needs Improvement</span>
               </div>
             </div>
           </div>
@@ -494,7 +490,7 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
                 <th className="py-1.5 px-3 w-5/12">Grading Area Component</th>
                 <th className="py-1.5 px-3 text-center w-2/12">Rating</th>
                 <th className="py-1.5 px-3 text-center w-2/12">Evaluation</th>
-                <th className="py-1.5 px-3 w-3/12">Educator Remarks</th>
+                <th className="py-1.5 px-3 text-center w-3/12">Remarks</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-755 font-sans">
@@ -504,19 +500,19 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
                 const pct = calculatePercentage(rawScore, comp.maxScore);
                 const rating = percentageToRating(pct);
 
-                const rowPaddingY = !parentViewMode ? "py-1" : "py-1.5";
+                const rowPaddingY = !parentViewMode ? "py-3.5" : "py-4";
 
                 return (
                   <tr key={key} className="align-top">
-                    <td className={`${rowPaddingY} px-3 space-y-0.5`}>
-                      <span className="font-bold text-slate-900 block leading-tight text-[11px]">
+                    <td className={`${rowPaddingY} px-3 space-y-1`}>
+                      <span className="font-bold text-slate-900 block leading-tight text-[12px]">
                         {comp.name}
                       </span>
-                      <span className="text-[9px] text-slate-450 block font-normal leading-normal">
+                      <span className="text-[10px] text-slate-500 block font-normal leading-normal">
                         {comp.description}
                       </span>
                       {!parentViewMode && (
-                        <span className="inline-block text-[8.5px] font-mono font-extrabold bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded mt-0.5 border border-slate-200">
+                        <span className="inline-block text-[9px] font-mono font-extrabold bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded mt-0.5 border border-slate-200">
                           Raw Marks: {rawScore}/{comp.maxScore} ({pct}%)
                         </span>
                       )}
@@ -538,12 +534,12 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
                         })}
                       </div>
                     </td>
-                    <td className={`${rowPaddingY} px-3 text-center font-bold text-slate-800 text-[9px] font-mono`}>
+                    <td className={`${rowPaddingY} px-3 text-center font-bold text-slate-800 text-[10px] font-mono`}>
                       <span className="inline-block px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200">
                         {student.afterSupport[key] || "Excellent"}
                       </span>
                     </td>
-                    <td className={`${rowPaddingY} px-3 text-[9.5px] text-slate-650 leading-normal font-normal italic`}>
+                    <td className={`${rowPaddingY} px-3 text-[10.5px] text-slate-650 leading-normal font-normal italic text-left`}>
                       <div title={student.remarks[key] || "No custom remarks shared."}>
                         {student.remarks[key] || "No custom remarks shared."}
                       </div>
@@ -555,34 +551,11 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
           </table>
         </div>
 
-        {/* Growth and Remarks block */}
-        <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-200">
-          <div className="border border-slate-200 rounded-lg p-2 space-y-0.5 bg-slate-50">
-            <h4 className="font-bold uppercase tracking-wide text-blue-600 text-[8.5px] flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-              Student Computing Strengths
-            </h4>
-            <p className="text-[9.5px] text-slate-700 leading-relaxed font-normal italic" title={student.strengths || "The student has demonstrated strong practical engagement during computing lab setups."}>
-              {student.strengths || "The student has demonstrated strong practical engagement during computing lab setups."}
-            </p>
-          </div>
-
-          <div className="border border-slate-200 rounded-lg p-2 space-y-0.5 bg-slate-50">
-            <h4 className="font-bold uppercase tracking-wide text-blue-600 text-[8.5px] flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-              Areas of Growth & Next Steps
-            </h4>
-            <p className="text-[9.5px] text-slate-700 leading-relaxed font-normal italic" title={student.areasOfImprovement || "Regular touch typing drills and homework submission revision are recommended."}>
-              {student.areasOfImprovement || "Regular touch typing drills and homework submission revision are recommended."}
-            </p>
-          </div>
-        </div>
-
         {/* Aggregate metrics */}
-        <div className="flex flex-row justify-between items-center bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-2.5 gap-2 text-xs">
+        <div className="flex flex-row justify-between items-center bg-slate-50 border border-slate-200 rounded-lg py-2.5 px-3.5 gap-2 text-xs">
           <div>
-            <strong className="block font-bold text-[9px] text-slate-700 uppercase tracking-wider">Overall Academic standing</strong>
-            <span className="text-[8px] text-slate-400 font-mono">Calculated over all 5 grading weights (Passing mark: 35%)</span>
+            <strong className="block font-bold text-[9px] text-slate-700 uppercase tracking-wider">Overall Performance</strong>
+            <span className="text-[8px] text-slate-400 font-mono">Calculated over all 5 grading weights</span>
           </div>
           <div className="flex gap-3 items-center">
             <div className="flex items-center gap-1 bg-slate-100 border border-slate-200 rounded px-2 py-0.5 font-mono text-slate-800 text-[9.5px] font-bold">
@@ -590,9 +563,9 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
               <span className="font-extrabold">{calculateTotalScore(student.scores)}%</span>
             </div>
             <div className="border-l border-slate-200 pl-3 flex items-center gap-1">
-              <span className={`w-1.5 h-1.5 rounded-full ${calculateTotalScore(student.scores) >= 35 ? "bg-emerald-500" : "bg-rose-500 animate-pulse"}`} />
-              <strong className={`font-black text-[9px] tracking-wider uppercase ${calculateTotalScore(student.scores) >= 35 ? "text-emerald-700" : "text-rose-600"}`}>
-                {calculateTotalScore(student.scores) >= 35 ? "PASSED ✅" : "FAILED ❌"}
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              <strong className="font-black text-[9px] tracking-wider uppercase text-emerald-700">
+                PASSED ✅
               </strong>
             </div>
           </div>
@@ -604,21 +577,16 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
           <div className="grid grid-cols-2 gap-6 text-[9px] text-slate-900 pt-0.5">
             <div className="space-y-1">
               <p className="font-extrabold uppercase tracking-widest text-slate-400 text-[7.5px]">Evaluator Signature</p>
-              <div className="border-b border-slate-300 w-full pt-1 h-3.5" />
+              <div className="border-b border-slate-300 w-full pt-1 h-11" />
               <p className="text-[8.5px] font-bold text-slate-900 mt-1">Mr. Sudeep Shrestha (Teacher)</p>
-              <p className="text-[8.5px] font-bold text-slate-400 font-medium">Date: <span className="font-mono text-slate-900 font-bold">{student.date}</span></p>
+              <p className="text-[8.5px] font-bold text-slate-400 font-medium">Date: <span className="font-mono text-slate-900 font-bold">{getTodayDateString()}</span></p>
             </div>
 
             <div className="space-y-1">
               <p className="font-extrabold uppercase tracking-widest text-slate-400 text-[7.5px]">Parent / Guardian Signature</p>
-              <div className="border-b border-slate-300 w-full pt-1 h-3.5" />
+              <div className="border-b border-slate-300 w-full pt-1 h-11" />
               <p className="text-[8.5px] font-bold text-slate-400 pt-1.5 font-mono">Date Checked: __________________</p>
             </div>
-          </div>
-
-          {/* Tiny bottom tag */}
-          <div className="pt-1.5 border-t border-slate-100 flex justify-end items-center text-[7.5px] text-slate-400 font-mono">
-            <span>Page 1 of 1</span>
           </div>
         </div>
       </div>

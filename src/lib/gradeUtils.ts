@@ -2,6 +2,17 @@ import * as XLSX from "xlsx";
 import { StudentRecord, COMPONENT_DETAILS, ComponentKey } from "../types";
 
 /**
+ * Returns today's date in YYYY-MM-DD format based on local time.
+ */
+export function getTodayDateString(): string {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * Calculates percentage score for a given raw score and max score.
  */
 export function calculatePercentage(score: number, maxScore: number): number {
@@ -76,8 +87,7 @@ export function percentageToLetterGrade(percentage: number): string {
   if (percentage >= 60) return "B";
   if (percentage >= 50) return "C+";
   if (percentage >= 40) return "C";
-  if (percentage >= 35) return "D";
-  return "NG";
+  return "D";
 }
 
 /**
@@ -447,64 +457,112 @@ export function generateDefaultStrengthsAndImprovements(components: StudentRecor
  */
 export function exportToClassroomExcel(students: StudentRecord[]) {
   // 1. Prepare raw data rows
-  const dataRows = students.map((student) => {
+  const academicYear = 2083; // Standardize on BS Academic Year 2083
+  const todayStr = getTodayDateString();
+
+  const titleRows = [
+    ["MOUNT ANNAPURNA SECONDARY SCHOOL - COMPUTER SCIENCE EVALUATION LEDGER"],
+    ["MASTER GRADEBOOK LEDGER - OFFICIAL ACADEMIC RECORD"],
+    [`Academic Year: ${academicYear} BS | Date Generated: ${todayStr} | Subject Teacher: Mr. Sudeep Shrestha`],
+    ["-------------------------------------------------------------------------------------------------------------------------------------------------------------"],
+    ["★ INFORMATION & LEDGER OVERVIEW:"],
+    ["  1. This is the master ledger of student marks, rating bands, qualitative progress descriptions, letter grades, and target feedback."],
+    ["  2. Editing Scores: You can modify numeric marks in the score columns (Participation, Homework, MCQ, Project, Lab) of this ledger and"],
+    ["     upload it back to the EduGrade web app. The portal will automatically parse the headers and sync all edited student grades instantly."],
+    ["============================================================================================================================================================="],
+    [], // spacer row
+    [
+      "Student ID",
+      "Roll No",
+      "Student Name",
+      "Grade",
+      "Phase",
+      "Batch",
+      "Participation (Max 10)",
+      "Homework (Max 10)",
+      "MCQ (Max 30)",
+      "Project (Max 30)",
+      "Lab (Max 20)",
+      "Total Marks (100)",
+      "Overall Rating (1-4)",
+      "Qualitative Descriptor",
+      "Overall Grade",
+      "Key Strengths",
+      "Areas of Improvement"
+    ]
+  ];
+
+  const studentRows = students.map((student) => {
     const total = calculateTotalScore(student.scores);
     const overallRating = percentageToRating(total);
     const overallDesc = ratingToDescriptor(overallRating);
     const letterGrade = percentageToLetterGrade(total);
 
-    return {
-      "Student ID": student.id,
-      "Student Name": student.name,
-      "Roll Number": student.rollNo || "—",
-      "Grade/Section": student.grade,
-      "Date Evaluated": student.date,
-      "Classroom Participation (10)": student.scores.participation,
-      "Homework Tasks (10)": student.scores.homework,
-      "Theory MCQ (30)": student.scores.mcq,
-      "Practical Projects (30)": student.scores.project,
-      "Practical Lab (20)": student.scores.lab,
-      "Total Marks (100)": total,
-      "Overall Rating (1-4)": overallRating,
-      "Qualitative Descriptor": overallDesc,
-      "Overall Grade": letterGrade,
-      "Key Strengths": student.strengths || "N/A",
-      "Areas of Improvement": student.areasOfImprovement || "N/A",
-    };
+    return [
+      student.id,
+      student.rollNo || "",
+      student.name,
+      student.grade,
+      student.phase || "Phase 1",
+      student.batch || "2083 BS",
+      student.scores.participation,
+      student.scores.homework,
+      student.scores.mcq,
+      student.scores.project,
+      student.scores.lab,
+      total,
+      overallRating,
+      overallDesc,
+      letterGrade,
+      student.strengths || "N/A",
+      student.areasOfImprovement || "N/A"
+    ];
   });
 
-  // 2. Create Sheet JS Objects
   const wb = XLSX.utils.book_new();
-  
-  // Sheet 1: Master Gradebook Ledger
-  const wsMaster = XLSX.utils.json_to_sheet(dataRows);
+  const wsMaster = XLSX.utils.aoa_to_sheet([...titleRows, ...studentRows]);
   
   // Apply clean width constraints for better Excel viewing
   const wscols = [
-    { wch: 12 }, // ID // width in chars
-    { wch: 25 }, // Name
-    { wch: 15 }, // Roll Number
+    { wch: 15 }, // Student ID
+    { wch: 10 }, // Roll No
+    { wch: 25 }, // Student Name
     { wch: 14 }, // Grade
-    { wch: 15 }, // Date
-    { wch: 28 }, // Participation
+    { wch: 12 }, // Phase
+    { wch: 12 }, // Batch
+    { wch: 26 }, // Participation
     { wch: 22 }, // Homework
     { wch: 18 }, // MCQ
-    { wch: 25 }, // Project
-    { wch: 20 }, // Lab
+    { wch: 20 }, // Project
+    { wch: 18 }, // Lab
     { wch: 18 }, // Total
     { wch: 22 }, // Converted Rating
     { wch: 22 }, // Descriptor
     { wch: 15 }, // Grade letter
-    { wch: 40 }, // Strengths
-    { wch: 40 }, // Weakness
+    { wch: 45 }, // Strengths
+    { wch: 45 }, // Areas of Improvement
   ];
   wsMaster["!cols"] = wscols;
+
+  // Merge headers elegant block
+  wsMaster["!merges"] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 16 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 16 } },
+    { s: { r: 2, c: 0 }, e: { r: 2, c: 16 } },
+    { s: { r: 3, c: 0 }, e: { r: 3, c: 16 } },
+    { s: { r: 4, c: 0 }, e: { r: 4, c: 16 } },
+    { s: { r: 5, c: 0 }, e: { r: 5, c: 16 } },
+    { s: { r: 6, c: 0 }, e: { r: 6, c: 16 } },
+    { s: { r: 7, c: 0 }, e: { r: 7, c: 16 } },
+    { s: { r: 8, c: 0 }, e: { r: 8, c: 16 } }
+  ];
 
   XLSX.utils.book_append_sheet(wb, wsMaster, "Master Classroom Ledger");
 
   // Sheet 2: Conversion Guide Reference
   const scaleData = [
-    ["EduGrade Computer Science Grading Scaling Standards"],
+    ["MOUNT ANNAPURNA SECONDARY SCHOOL - COMPUTER SCIENCE REFERENCE GUIDE"],
+    ["EduGrade Computer Science Grading Scaling Standards & Component Reference"],
     [],
     ["Rating Band Scale", "Component Minimum Percentage", "Qualitative Equivalent", "Classroom Tally Target"],
     ["4", "90% and Above", "Excellent (Eager participation / flawless concept execution)", "Almost always active, attentive, contributing"],
@@ -513,19 +571,32 @@ export function exportToClassroomExcel(students: StudentRecord[]) {
     ["1", "Below 50%", "Needs Improvement (Needs extra guidelines & continuous tracking)", "Rarely participates, mostly disengaged"],
     [],
     ["Component Scoring Weights (Out of 100 Overall)"],
-    ["1. Classroom Participation & Attentiveness", "10 Marks Total"],
-    ["2. Homework & Independent Assignments", "10 Marks Total"],
-    ["3. Theoretical Assessment (MCQ & Concepts)", "30 Marks Total"],
-    ["4. Creative Programming & Practical Projects", "30 Marks Total"],
-    ["5. Practical Lab Deliverables", "20 Marks Total"]
+    ["1. Classroom Participation & Attentiveness", "10 Marks Total (Max: 10)"],
+    ["2. Homework & Independent Assignments", "10 Marks Total (Max: 10)"],
+    ["3. Theoretical Assessment (MCQ & Concepts)", "30 Marks Total (Max: 30)"],
+    ["4. Creative Programming & Practical Projects", "30 Marks Total (Max: 30)"],
+    ["5. Practical Lab Deliverables", "20 Marks Total (Max: 20)"]
   ];
 
   const wsScale = XLSX.utils.aoa_to_sheet(scaleData);
+  
+  // Apply beautiful columns to scaling reference sheet too
+  wsScale["!cols"] = [
+    { wch: 30 },
+    { wch: 30 },
+    { wch: 55 },
+    { wch: 45 }
+  ];
+
+  wsScale["!merges"] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 3 } }
+  ];
+
   XLSX.utils.book_append_sheet(wb, wsScale, "Grading Conversion Standards");
 
   // Output filename
-  const academicYear = new Date().getFullYear();
-  XLSX.writeFile(wb, `CS_Student_Evaluation_Ledger_${academicYear}.xlsx`);
+  XLSX.writeFile(wb, `CS_Student_Evaluation_Ledger_${academicYear}_BS.xlsx`);
 }
 
 /**

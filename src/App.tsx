@@ -41,7 +41,8 @@ import {
   getRemarkByComponentAndRating,
   generateDefaultStrengthsAndImprovements,
   exportToClassroomExcel,
-  parseClassAndSection
+  parseClassAndSection,
+  getTodayDateString
 } from "./lib/gradeUtils";
 
 // @ts-ignore
@@ -252,21 +253,7 @@ export default function App() {
     return CLASS_3_STUDENTS;
   });
 
-  const [selectedStudentId, setSelectedStudentId] = useState<string>(() => {
-    return students.length > 0 ? students[0].id : "";
-  });
-
-  // Keep selectedStudentId in sync with students when list loads or changes
-  useEffect(() => {
-    if (students.length > 0) {
-      // If current selected student isn't in the loaded list, select the first student
-      if (!students.some(s => s.id === selectedStudentId)) {
-        setSelectedStudentId(students[0].id);
-      }
-    } else {
-      setSelectedStudentId("");
-    }
-  }, [students, selectedStudentId]);
+  const [selectedStudentId, setSelectedStudentId] = useState<string>("");
 
   const [ALLOWED_CLASSES, setAllowedClasses] = useState<string[]>(() => {
     try {
@@ -326,9 +313,9 @@ export default function App() {
 
   const ALLOWED_PHASES = ["Phase 1", "Phase 2", "Phase 3", "Phase 4"];
 
-  const [classFilter, setClassFilter] = useState<string>("all");
-  const [phaseFilter, setPhaseFilter] = useState<string>("all");
-  const [batchFilter, setBatchFilter] = useState<string>("all");
+  const [classFilter, setClassFilter] = useState<string>("");
+  const [phaseFilter, setPhaseFilter] = useState<string>("");
+  const [batchFilter, setBatchFilter] = useState<string>("");
   const [workspaceTab, setWorkspaceTab] = useState<"editor" | "report" | "branding">("editor");
   const [editorMode, setEditorMode] = useState<"matrix" | "single">("matrix");
   const [searchQuery, setSearchQuery] = useState("");
@@ -408,20 +395,36 @@ export default function App() {
   const [statusMessage, setStatusMessage] = useState("");
   const [studentToDelete, setStudentToDelete] = useState<{ id: string; name: string } | null>(null);
 
-  const filteredStudents = students.filter((s) => {
-    const matchesSearch =
-      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.grade.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (s.rollNo && s.rollNo.toString().toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (s.batch && s.batch.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesClass = classFilter === "all" || s.grade === classFilter;
-    const matchesPhase = phaseFilter === "all" || (s.phase || "Phase 1") === phaseFilter;
-    const matchesBatch = batchFilter === "all" || (s.batch || "2083 BS") === batchFilter;
-    return matchesSearch && matchesClass && matchesPhase && matchesBatch;
-  });
+  const isFilterSelected = classFilter !== "" && phaseFilter !== "" && batchFilter !== "";
+
+  const filteredStudents = isFilterSelected
+    ? students.filter((s) => {
+        const matchesSearch =
+          s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          s.grade.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          s.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (s.rollNo && s.rollNo.toString().toLowerCase().includes(searchQuery.toLowerCase())) ||
+          (s.batch && s.batch.toLowerCase().includes(searchQuery.toLowerCase()));
+        const matchesClass = s.grade === classFilter;
+        const matchesPhase = (s.phase || "Phase 1") === phaseFilter;
+        const matchesBatch = (s.batch || "2083 BS") === batchFilter;
+        return matchesSearch && matchesClass && matchesPhase && matchesBatch;
+      })
+    : [];
 
   const activeStudent = students.find((s) => s.id === selectedStudentId);
+
+  // Keep selectedStudentId in sync with filteredStudents when list loads or changes
+  useEffect(() => {
+    if (filteredStudents.length > 0) {
+      // If current selected student isn't in the loaded list, select the first student
+      if (!filteredStudents.some(s => s.id === selectedStudentId)) {
+        setSelectedStudentId(filteredStudents[0].id);
+      }
+    } else {
+      setSelectedStudentId("");
+    }
+  }, [filteredStudents, selectedStudentId]);
 
   // --- STANDALONE UN-SANDBOXED PRINT PREVIEW ROUTE ---
   const isPrintPreviewRoute = window.location.pathname.startsWith("/print-preview/");
@@ -445,7 +448,29 @@ export default function App() {
     );
   }
 
-  // Persistence (Auto-saving is disabled per user request. Saving is done manually via Save Changes click or Ctrl+S)
+  // Persistence (Auto-saving enabled to ensure data is safe and never erased)
+  useEffect(() => {
+    if (students && students.length > 0) {
+      try {
+        localStorage.setItem("edugrade_students", JSON.stringify(students));
+        setHasUnsaved(false); // No unsaved changes anymore because it autosaves!
+      } catch (e) {
+        console.error("Auto-save students error:", e);
+      }
+    }
+  }, [students]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("edugrade_schoolName", schoolName);
+      localStorage.setItem("edugrade_schoolMotto", schoolMotto);
+      if (schoolLogo) {
+        localStorage.setItem("school_logo", schoolLogo);
+      }
+    } catch (e) {
+      console.error("Auto-save school meta error:", e);
+    }
+  }, [schoolName, schoolMotto, schoolLogo]);
 
   // Listen for storage changes in other tabs/windows to keep all views completely consistent
   useEffect(() => {
@@ -916,22 +941,35 @@ export default function App() {
   };
 
   const downloadExcelTemplate = () => {
-    const headers = [
-      "Student ID",
-      "Roll No",
-      "Student Name",
-      "Grade",
-      "Phase",
-      "Batch",
-      "Participation (Max 10)",
-      "Homework (Max 10)",
-      "MCQ (Max 30)",
-      "Project (Max 30)",
-      "Lab (Max 20)"
+    const templateRows = [
+      ["MOUNT ANNAPURNA SECONDARY SCHOOL - COMPUTER SCIENCE MARKS ENTRY LEDGER"],
+      [`EVALUATION MARKS ENTRY SHEET - ${classFilter === "all" ? "ALL CLASSES" : classFilter.toUpperCase()}`],
+      [`Academic Year: 2083 BS | Date Generated: ${getTodayDateString()} | Subject Teacher: Mr. Sudeep Shrestha`],
+      ["------------------------------------------------------------------------------------------------------------------------------------"],
+      ["★ DIRECTIONS FOR EXCEL MARKS UPLOAD & BULK SYNCING:"],
+      ["  1. ONLY modify the numeric marks in columns G, H, I, J, K (Participation, Homework, MCQ, Project, and Lab)."],
+      ["  2. DO NOT change columns A, B, C, D, E, F (Student ID, Roll No, Student Name, Grade, Phase, Batch) - doing so breaks the database sync."],
+      ["  3. Score Bounds: Participation (0-10), Homework (0-10), MCQ (0-30), Project (0-30), Lab (0-20). Only enter integer numbers."],
+      ["  4. Save this file as an Excel Spreadsheet (.xlsx) and drag-and-drop or upload it back in the EduGrade web app to save instantly."],
+      ["===================================================================================================================================="],
+      [], // spacer row
+      [
+        "Student ID",
+        "Roll No",
+        "Student Name",
+        "Grade",
+        "Phase",
+        "Batch",
+        "Participation (Max 10)",
+        "Homework (Max 10)",
+        "MCQ (Max 30)",
+        "Project (Max 30)",
+        "Lab (Max 20)"
+      ]
     ];
     
     // Use currently filtered students so they edit the active classroom group's marks directly
-    const rows = filteredStudents.map((st) => [
+    const studentRows = filteredStudents.map((st) => [
       st.id,
       st.rollNo || "",
       st.name,
@@ -946,21 +984,35 @@ export default function App() {
     ]);
 
     const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const ws = XLSX.utils.aoa_to_sheet([...templateRows, ...studentRows]);
 
     // Apply stunning, spacious column widths so everything is completely readable in Microsoft Excel or Google Sheets
     ws["!cols"] = [
       { wch: 15 }, // Student ID
-      { wch: 12 }, // Roll No
+      { wch: 10 }, // Roll No
       { wch: 25 }, // Student Name
-      { wch: 16 }, // Grade
-      { wch: 14 }, // Phase
-      { wch: 14 }, // Batch
-      { wch: 25 }, // Participation (Max 10)
+      { wch: 14 }, // Grade
+      { wch: 12 }, // Phase
+      { wch: 12 }, // Batch
+      { wch: 26 }, // Participation (Max 10)
       { wch: 22 }, // Homework (Max 10)
       { wch: 18 }, // MCQ (Max 30)
       { wch: 20 }, // Project (Max 30)
       { wch: 18 }  // Lab (Max 20)
+    ];
+
+    // Merge the top branding/instruction rows to span across all 11 columns elegantly
+    ws["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 10 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 10 } },
+      { s: { r: 2, c: 0 }, e: { r: 2, c: 10 } },
+      { s: { r: 3, c: 0 }, e: { r: 3, c: 10 } },
+      { s: { r: 4, c: 0 }, e: { r: 4, c: 10 } },
+      { s: { r: 5, c: 0 }, e: { r: 5, c: 10 } },
+      { s: { r: 6, c: 0 }, e: { r: 6, c: 10 } },
+      { s: { r: 7, c: 0 }, e: { r: 7, c: 10 } },
+      { s: { r: 8, c: 0 }, e: { r: 8, c: 10 } },
+      { s: { r: 9, c: 0 }, e: { r: 9, c: 10 } }
     ];
 
     XLSX.utils.book_append_sheet(wb, ws, "Class Marks Entry");
@@ -968,7 +1020,7 @@ export default function App() {
     const classTag = classFilter === "all" ? "All_Classes" : classFilter.replace(/\s+/g, "_");
     XLSX.writeFile(wb, `EduGrade_Marks_Template_${classTag}.xlsx`);
     
-    triggerStatus(`🎉 Downloaded Excel template (.xlsx) with ${filteredStudents.length} student listings!`);
+    triggerStatus(`🎉 Downloaded designed Excel template (.xlsx) with ${filteredStudents.length} student listings!`);
   };
 
   const handleSpreadsheetUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -993,28 +1045,47 @@ export default function App() {
           return;
         }
 
-        // Parse headers
-        const headers = (jsonData[0] || []).map(h => String(h || "").trim().replace(/^"|"$/g, "").toLowerCase());
+        // Parse headers dynamically by searching for the row containing Student ID and Student Name
+        let headerRowIndex = -1;
+        let headers: string[] = [];
+        for (let r = 0; r < jsonData.length; r++) {
+          const row = jsonData[r] || [];
+          const rowStrList = row.map(cell => String(cell || "").trim().toLowerCase());
+          const hasId = rowStrList.some(s => s === "student id" || s === "id" || s.includes("student id") || s.includes("student_id"));
+          const hasName = rowStrList.some(s => s.includes("student name") || s.includes("name") || s === "student name" || s === "name");
+          if (hasId && hasName) {
+            headerRowIndex = r;
+            headers = rowStrList;
+            break;
+          }
+        }
+
+        if (headerRowIndex === -1) {
+          // Fallback to row index 0
+          headers = (jsonData[0] || []).map(h => String(h || "").trim().replace(/^"|"$/g, "").toLowerCase());
+          headerRowIndex = 0;
+        }
         
-        const idIdx = headers.findIndex(h => h.includes("student id") || h === "id");
+        const idIdx = headers.findIndex(h => h.includes("student id") || h === "id" || h.includes("student_id"));
         const partIdx = headers.findIndex(h => h.includes("participation"));
         const hwIdx = headers.findIndex(h => h.includes("homework"));
-        const mcqIdx = headers.findIndex(h => h.includes("mcq"));
-        const projIdx = headers.findIndex(h => h.includes("project"));
-        const labIdx = headers.findIndex(h => h.includes("lab"));
+        const mcqIdx = headers.findIndex(h => h.includes("mcq") || h.includes("theory"));
+        const projIdx = headers.findIndex(h => h.includes("project") || h.includes("practical projects"));
+        const labIdx = headers.findIndex(h => h.includes("lab") || h.includes("practical lab"));
         const rollIdx = headers.findIndex(h => h.includes("roll"));
         const phaseIdx = headers.findIndex(h => h.includes("phase"));
         const batchIdx = headers.findIndex(h => h.includes("batch"));
 
         if (idIdx === -1) {
-          triggerStatus("❌ Error: 'Student ID' column is missing from the sheet.");
+          triggerStatus("❌ Error: 'Student ID' column could not be found in the sheet headers.");
           return;
         }
 
         let updatedCount = 0;
         const updatedStudents = [...students];
 
-        for (let i = 1; i < jsonData.length; i++) {
+        // Loop starting from headerRowIndex + 1 to skip branding and instruction rows
+        for (let i = headerRowIndex + 1; i < jsonData.length; i++) {
           const row = jsonData[i];
           if (!row || row.length === 0) continue;
 
@@ -1026,27 +1097,20 @@ export default function App() {
             const s = { ...updatedStudents[studentIndex] };
             s.scores = { ...s.scores };
 
-            // Apply clamped grade updates
-            if (partIdx !== -1 && row[partIdx] !== undefined && row[partIdx] !== null && row[partIdx] !== "") {
-              const val = parseInt(String(row[partIdx])) || 0;
-              s.scores.participation = Math.max(0, Math.min(10, val));
-            }
-            if (hwIdx !== -1 && row[hwIdx] !== undefined && row[hwIdx] !== null && row[hwIdx] !== "") {
-              const val = parseInt(String(row[hwIdx])) || 0;
-              s.scores.homework = Math.max(0, Math.min(10, val));
-            }
-            if (mcqIdx !== -1 && row[mcqIdx] !== undefined && row[mcqIdx] !== null && row[mcqIdx] !== "") {
-              const val = parseInt(String(row[mcqIdx])) || 0;
-              s.scores.mcq = Math.max(0, Math.min(30, val));
-            }
-            if (projIdx !== -1 && row[projIdx] !== undefined && row[projIdx] !== null && row[projIdx] !== "") {
-              const val = parseInt(String(row[projIdx])) || 0;
-              s.scores.project = Math.max(0, Math.min(30, val));
-            }
-            if (labIdx !== -1 && row[labIdx] !== undefined && row[labIdx] !== null && row[labIdx] !== "") {
-              const val = parseInt(String(row[labIdx])) || 0;
-              s.scores.lab = Math.max(0, Math.min(20, val));
-            }
+            const parseScore = (raw: any, maxLimit: number): number => {
+              if (raw === undefined || raw === null) return 0;
+              const str = String(raw).trim();
+              if (str === "" || str === "—" || str === "-") return 0;
+              const parsed = parseInt(str, 10);
+              return isNaN(parsed) ? 0 : Math.max(0, Math.min(maxLimit, parsed));
+            };
+
+            // Apply clamped grade updates safely
+            if (partIdx !== -1) s.scores.participation = parseScore(row[partIdx], 10);
+            if (hwIdx !== -1) s.scores.homework = parseScore(row[hwIdx], 10);
+            if (mcqIdx !== -1) s.scores.mcq = parseScore(row[mcqIdx], 30);
+            if (projIdx !== -1) s.scores.project = parseScore(row[projIdx], 30);
+            if (labIdx !== -1) s.scores.lab = parseScore(row[labIdx], 20);
             
             // Apply student meta if provided
             if (rollIdx !== -1 && row[rollIdx] !== undefined && row[rollIdx] !== null && row[rollIdx] !== "") {
@@ -1072,9 +1136,10 @@ export default function App() {
 
         if (updatedCount > 0) {
           setStudents(updatedStudents);
-          setHasUnsaved(true);
+          setHasUnsaved(false); // No unsaved changes anymore because it autosaves!
+          localStorage.setItem("edugrade_students", JSON.stringify(updatedStudents));
           localStorage.setItem("edugrade_migrated_to_v3", "true"); // Always lock in custom modifications
-          triggerStatus(`🎉 Success: Synced marks and auto-generated evaluations for ${updatedCount} students!`);
+          triggerStatus(`🎉 Success: Uploaded and saved updated marks/evaluations for ${updatedCount} students!`);
         } else {
           triggerStatus("⚠️ Spreadsheet loaded, but matched zero active student records.");
         }
@@ -1129,7 +1194,7 @@ export default function App() {
 
         const totalScore = calculateTotalScore(student.scores);
         const letterGrade = percentageToLetterGrade(totalScore);
-        const isPassed = totalScore >= 35;
+        const isPromoted = totalScore >= 40;
 
         helperContainer.innerHTML = `
           <div 
@@ -1185,7 +1250,7 @@ export default function App() {
               </div>
               <div>
                 <span style="font-size: 7.5px; text-transform: uppercase; font-weight: 800; color: #64748b;">Evaluation Date</span>
-                <p style="margin: 2px 0 0 0; font-family: monospace; color: #475569;">${student.date}</p>
+                <p style="margin: 2px 0 0 0; font-family: monospace; color: #475569;">${getTodayDateString()}</p>
               </div>
               <div>
                 <span style="font-size: 7.5px; text-transform: uppercase; font-weight: 800; color: #64748b;">Overall Grade</span>
@@ -1196,7 +1261,7 @@ export default function App() {
             <div style="display: grid; grid-template-columns: 2.1fr 1fr; gap: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">
               <div>
                 <h3 style="margin: 0 0 3px 0; font-size: 8px; font-weight: bold; text-transform: uppercase; color: #64748b;">Grade Scale Benchmark</h3>
-                <div style="display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; font-size: 7px; height: 32px;">
+                <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; font-size: 7px; height: 32px;">
                   <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; text-align: center; display: flex; flex-direction: column; justify-content: space-between; padding: 2px;">
                     <strong style="font-size: 8.5px; font-weight: bold; color: #0f172a;">A+</strong>
                     <span style="color: #64748b; font-family: monospace; font-size: 6px;">(90%+)</span>
@@ -1222,12 +1287,8 @@ export default function App() {
                     <span style="color: #64748b; font-family: monospace; font-size: 6px;">(40-49)</span>
                   </div>
                   <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; text-align: center; display: flex; flex-direction: column; justify-content: space-between; padding: 2px;">
-                    <strong style="font-size: 8.5px; font-weight: bold; color: #0f172a;">D</strong>
-                    <span style="color: #64748b; font-family: monospace; font-size: 6px;">(35-39)</span>
-                  </div>
-                  <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; text-align: center; display: flex; flex-direction: column; justify-content: space-between; padding: 2px;">
-                    <strong style="font-size: 8.5px; font-weight: bold; color: #ef4444;">NG</strong>
-                    <span style="color: #ef4444; font-family: monospace; font-size: 6px;">(&lt;35)</span>
+                    <strong style="font-size: 8.5px; font-weight: bold; color: #d97706;">D</strong>
+                    <span style="color: #d97706; font-family: monospace; font-size: 6px;">(&lt;40)</span>
                   </div>
                 </div>
               </div>
@@ -1257,10 +1318,10 @@ export default function App() {
             <table style="width: 100%; text-align: left; border-collapse: collapse; font-size: 9.5px; margin: 4px 0;">
               <thead>
                 <tr style="border-bottom: 1.5px solid #0f172a; background-color: #f8fafc; font-size: 7.5px; text-transform: uppercase; font-weight: bold; color: #475569;">
-                  <th style="padding: 4px 5px; width: 44%;">Component</th>
-                  <th style="padding: 4px 5px; text-align: center; width: 20%;">Rating</th>
-                  <th style="padding: 4px 5px; text-align: center; width: 14%;">Grade Scale</th>
-                  <th style="padding: 4px 5px; width: 22%;">Remarks</th>
+                  <th style="padding: 10px 6px; width: 44%;">Component</th>
+                  <th style="padding: 10px 6px; text-align: center; width: 20%;">Rating</th>
+                  <th style="padding: 10px 6px; text-align: center; width: 14%;">Grade Scale</th>
+                  <th style="padding: 10px 6px; text-align: center; width: 22%;">Remarks</th>
                 </tr>
               </thead>
               <tbody style="color: #334155;">
@@ -1275,69 +1336,58 @@ export default function App() {
                   
                   return `
                     <tr style="border-bottom: 1px solid #e2e8f0;">
-                      <td style="padding: 4px 5px;">
-                        <strong style="color: #0f172a; font-size: 9.5px; display: block;">${comp.name}</strong>
-                        <span style="font-size: 7.5px; color: #64748b; line-height:1.1;">${comp.description}</span>
+                      <td style="padding: 10px 6px;">
+                        <strong style="color: #0f172a; font-size: 10.5px; display: block;">${comp.name}</strong>
+                        <span style="font-size: 8.5px; color: #64748b; line-height: 1.2;">${comp.description}</span>
                       </td>
-                      <td style="padding: 4px 5px; text-align: center;">
-                        <div style="display: flex; justify-content: center; gap: 2px;">
+                      <td style="padding: 10px 6px; text-align: center;">
+                        <div style="display: flex; justify-content: center; gap: 3px;">
                           ${[1, 2, 3, 4].map(num => `
                             <span style="
-                              width: 11px;
-                              height: 11px;
+                              width: 14px;
+                              height: 14px;
                               border-radius: 50%;
                               display: inline-flex;
                               align-items: center;
                               justify-content: center;
-                              font-size: 7.5px;
+                              font-size: 8.5px;
                               box-sizing: border-box;
                               ${num === rating ? "background-color: #0f172a; color: #ffffff; font-weight: bold;" : "background-color: transparent; color: #cbd5e1; border: 1px solid #cbd5e1;"}
                             ">${num}</span>
                           `).join("")}
                         </div>
                       </td>
-                      <td style="padding: 4px 5px; text-align: center; font-weight: bold; font-size: 8px;">
-                        <span style="background-color: #f1f5f9; padding: 1px 3px; border-radius: 3px;">${desc}</span>
+                      <td style="padding: 10px 6px; text-align: center; font-weight: bold; font-size: 9px;">
+                        <span style="background-color: #f1f5f9; padding: 2px 4px; border-radius: 3px;">${desc}</span>
                       </td>
-                      <td style="padding: 4px 5px; font-size: 8px; font-style: italic; color: #475569; line-height: 1.1;">${remarks}</td>
+                      <td style="padding: 10px 6px; font-size: 9px; font-style: italic; color: #475569; line-height: 1.2; text-align: left;">${remarks}</td>
                     </tr>
                   `;
                 }).join("")}
               </tbody>
             </table>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 4px 0;">
-              <div style="border: 1px solid #e2e8f0; border-radius: 6px; padding: 5px 8px; background-color: #fafcfb;">
-                <h4 style="margin: 0 0 2px 0; font-size: 8px; font-weight: bold; text-transform: uppercase; color: #1e3a8a;">Strengths</h4>
-                <p style="margin: 0; font-size: 8px; line-height: 1.3; font-style: italic; color: #334155;">${student.strengths || "Demonstrates strong understanding."}</p>
-              </div>
-              <div style="border: 1px solid #e2e8f0; border-radius: 6px; padding: 5px 8px; background-color: #fafcfb;">
-                <h4 style="margin: 0 0 2px 0; font-size: 8px; font-weight: bold; text-transform: uppercase; color: #1e3a8a;">Areas of Growth</h4>
-                <p style="margin: 0; font-size: 8px; line-height: 1.3; font-style: italic; color: #334155;">${student.areasOfImprovement || "Regular focus training recommended."}</p>
-              </div>
-            </div>
-
-            <div style="display: flex; justify-content: space-between; align-items: center; border: 1px solid #e2e8f0; background: #f8fafc; padding: 5px 8px; border-radius: 6px; font-size: 9.5px; margin: 4px 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border: 1px solid #e2e8f0; background: #f8fafc; padding: 8px 12px; border-radius: 6px; font-size: 10.5px; margin: 15px 0;">
               <div>
                 <span style="font-weight: bold; font-size: 7.5px; color: #475569; text-transform: uppercase;">Overall standing</span>
               </div>
               <div style="display: flex; align-items: center; gap: 6px;">
                 <span style="font-family: monospace; background: #f1f5f9; padding: 1.5px 4px; border-radius: 4px; font-weight: bold;">Score: ${totalScore}%</span>
-                <strong style="color: ${isPassed ? '#15803d' : '#b91c1c'}; font-size: 8.5px; text-transform: uppercase;">${isPassed ? 'PASSED ✅' : 'FAILED ❌'}</strong>
+                <strong style="color: #15803d; font-size: 8.5px; text-transform: uppercase;">PASSED ✅</strong>
               </div>
             </div>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; font-size: 8.5px; border-top: 1px solid #cbd5e1; padding-top: 5px; margin-top: auto;">
               <div>
                 <span style="font-size: 7px; text-transform: uppercase; font-weight: bold; color: #94a3b8; display: block;">Evaluator Signature</span>
-                <div style="border-bottom: 1px solid #cbd5e1; height: 14px; margin-top: 1px;"></div>
-                <p style="margin: 2px 0 0 0; font-weight: bold;">Mr. Sudeep Shrestha (Teacher)</p>
-                <p style="margin: 0; color: #64748b; font-size: 7.5px;">Date: <span style="font-family: monospace; font-weight: bold; color: #0f172a;">${student.date}</span></p>
+                <div style="border-bottom: 1px solid #cbd5e1; height: 42px; margin-top: 4px;"></div>
+                <p style="margin: 4px 0 0 0; font-weight: bold;">Mr. Sudeep Shrestha (Teacher)</p>
+                <p style="margin: 0; color: #64748b; font-size: 7.5px;">Date: <span style="font-family: monospace; font-weight: bold; color: #0f172a;">${getTodayDateString()}</span></p>
               </div>
               <div>
                 <span style="font-size: 7px; text-transform: uppercase; font-weight: bold; color: #94a3b8; display: block;">Parent Signature</span>
-                <div style="border-bottom: 1px solid #cbd5e1; height: 14px; margin-top: 1px;"></div>
-                <p style="margin: 3px 0 0 0; color: #64748b; font-size: 7.5px;">Date Checked: __________________</p>
+                <div style="border-bottom: 1px solid #cbd5e1; height: 42px; margin-top: 4px;"></div>
+                <p style="margin: 5px 0 0 0; color: #64748b; font-size: 7.5px;">Date Checked: __________________</p>
               </div>
             </div>
           </div>
@@ -1410,6 +1460,14 @@ export default function App() {
 
 
   const renderStudentRoster = (compact: boolean = false) => {
+    if (!isFilterSelected) {
+      return (
+        <div className="py-12 px-4 text-center">
+          <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider"> Roster Locked</p>
+          <p className="text-slate-400 text-[10.5px] mt-1">Select class, phase, and batch filters above to load students.</p>
+        </div>
+      );
+    }
     if (filteredStudents.length === 0) {
       return (
         <div className="py-12 px-4 text-center">
@@ -2163,19 +2221,7 @@ export default function App() {
                   </div>
                 )}
                 <div className="flex flex-wrap gap-1.5 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setClassFilter("all")}
-                    className={`px-2.5 py-1 text-[10.5px] font-bold rounded-lg border transition-all cursor-pointer ${
-                      classFilter === "all"
-                        ? "bg-slate-900 border-slate-900 text-white shadow-sm"
-                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
-                    }`}
-                  >
-                    All ({students.length})
-                  </button>
                   {ALLOWED_CLASSES.map((cls) => {
-                    const count = students.filter((s) => s.grade === cls).length;
                     return (
                       <button
                         key={cls}
@@ -2187,7 +2233,7 @@ export default function App() {
                             : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
                         }`}
                       >
-                        {cls.replace("Class ", "")} ({count})
+                        {cls.replace("Class ", "")}
                       </button>
                     );
                   })}
@@ -2199,19 +2245,7 @@ export default function App() {
                   Filter Students by Assessment Phase
                 </span>
                 <div className="flex flex-wrap gap-1.5 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setPhaseFilter("all")}
-                    className={`px-2.5 py-1 text-[10.5px] font-bold rounded-lg border transition-all cursor-pointer ${
-                      phaseFilter === "all"
-                        ? "bg-slate-900 border-slate-900 text-white shadow-sm"
-                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
-                    }`}
-                  >
-                    All Phases ({students.length})
-                  </button>
                   {ALLOWED_PHASES.map((ph) => {
-                    const count = students.filter((s) => (s.phase || "Phase 1") === ph).length;
                     return (
                       <button
                         key={ph}
@@ -2223,7 +2257,7 @@ export default function App() {
                             : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
                         }`}
                       >
-                        {ph.replace("Phase ", "P")} ({count})
+                        {ph}
                       </button>
                     );
                   })}
@@ -2279,19 +2313,7 @@ export default function App() {
                       </div>
                     )}
                     <div className="flex flex-wrap gap-1.5 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => setBatchFilter("all")}
-                        className={`px-2.5 py-1 text-[10.5px] font-bold rounded-lg border transition-all cursor-pointer ${
-                          batchFilter === "all"
-                            ? "bg-slate-900 border-slate-900 text-white shadow-sm"
-                            : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
-                        }`}
-                      >
-                        All Batches
-                      </button>
                       {allBatchOptions.map((b) => {
-                        const count = students.filter((s) => (s.batch || "2083 BS") === b).length;
                         return (
                           <button
                             key={b}
@@ -2303,7 +2325,7 @@ export default function App() {
                                 : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
                             }`}
                           >
-                            {b} ({count})
+                            {b}
                           </button>
                         );
                       })}
@@ -2357,6 +2379,39 @@ export default function App() {
                     />
                   </label>
                 </div>
+                
+                <div className="pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm("Are you completely sure you want to reset ALL scores to 0 for the currently filtered class and phase? This will overwrite existing entered marks with 0s and regenerate clean blank remarks.")) {
+                        const updated = students.map((st) => {
+                          const isFiltered = st.grade === classFilter && (st.phase || "Phase 1") === phaseFilter && (st.batch || "2083 BS") === batchFilter;
+                          if (isFiltered) {
+                            const zeroScores = { participation: 0, homework: 0, mcq: 0, project: 0, lab: 0 };
+                            return {
+                              ...st,
+                              scores: zeroScores,
+                              remarks: generateDefaultRemarks(zeroScores),
+                              strengths: "",
+                              areasOfImprovement: ""
+                            };
+                          }
+                          return st;
+                        });
+                        setStudents(updated);
+                        setHasUnsaved(true);
+                        triggerStatus("🧹 Reset all scores for the active filter to 0 successfully!");
+                      }
+                    }}
+                    className="w-full flex items-center justify-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[10.5px] py-1.5 px-2 rounded-lg border border-rose-200 border-b-2 border-rose-300 transition cursor-pointer shadow-sm text-center"
+                    title="Reset all marks to 0 for the currently active class/phase filters"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 shrink-0 text-rose-500" />
+                    <span>Clear all marks of this filtered view to 0</span>
+                  </button>
+                </div>
+
                 <p className="text-[9px] text-slate-400 leading-tight">
                   * Pre-fills active classroom roster. Edit scores in Excel, then upload file.
                 </p>
@@ -2392,7 +2447,15 @@ export default function App() {
             </div>
           </div>
 
-          {workspaceTab === "editor" ? (
+          {!isFilterSelected ? (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-50 text-center select-none min-h-[400px]">
+              <GraduationCap className="h-14 w-14 text-slate-300 mb-4 animate-pulse" />
+              <h3 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider">Academic Roster Locked</h3>
+              <p className="text-slate-500 text-xs mt-2 max-w-sm leading-relaxed font-semibold">
+                To guarantee bulletproof grade recording with zero errors, please select a Class, Assessment Phase, and Academic Batch from the sidebar options to activate this sheet.
+              </p>
+            </div>
+          ) : workspaceTab === "editor" ? (
             editorMode === "matrix" ? (
               <div className="flex-1 flex flex-col bg-white">
                 {/* Responsive Spreadsheet Grid */}
@@ -2794,67 +2857,20 @@ export default function App() {
                     })}
                   </div>
 
-                  {/* Strengths & Weaknesses Comment Writers + Gemini trigger */}
-                  <div className="space-y-4 border-t border-slate-200 pt-5">
-                    <div className="flex justify-between items-center">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Report Summary & Growth Comments</h4>
-                      <button
-                        type="button"
-                        onClick={generateCommentsWithGemini}
-                        disabled={isAiLoading}
-                        className="flex items-center gap-1 bg-blue-650 hover:bg-blue-700 disabled:bg-slate-300 text-white font-bold text-xs px-3.5 py-2 rounded-lg transition-colors cursor-pointer shadow-sm shadow-blue-100"
-                      >
-                        <Sparkles className={`h-3 w-3 ${isAiLoading ? "animate-spin text-amber-300 font-bold" : "text-amber-400 font-bold"}`} />
-                        <span>{isAiLoading ? "Generating comments..." : "AI Auto-Write Remarks"}</span>
-                      </button>
-                    </div>
-
-                    <div className="space-y-3">
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1 flex justify-between">
-                          <span>Interactive Key Strengths</span>
-                          <span className="text-[10px] text-slate-400 font-normal">Parent-facing transcript summary</span>
-                        </label>
-                        <textarea
-                          id="text-strengths"
-                          rows={2}
-                          value={activeStudent.strengths || ""}
-                          onChange={(e) => handleStudentFieldChange("strengths", e.target.value)}
-                          placeholder="e.g. Sudeep exhibits excellent attention during coding tasks and leads the classroom..."
-                          className="w-full text-xs border border-slate-200 rounded-lg p-3 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700 leading-relaxed font-normal shadow-inner transition"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1 flex justify-between">
-                          <span>Development / Areas for Improvement</span>
-                          <span className="text-[10px] text-slate-400 font-normal">Next pedagogical actions</span>
-                        </label>
-                        <textarea
-                          id="text-[areasOfImprovement]"
-                          rows={2}
-                          value={activeStudent.areasOfImprovement || ""}
-                          onChange={(e) => handleStudentFieldChange("areasOfImprovement", e.target.value)}
-                          placeholder="e.g. Needs to focus on submitting worksheets on time and practices touch-typing exercises..."
-                          className="w-full text-xs border border-slate-200 rounded-lg p-3 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700 leading-relaxed font-normal shadow-inner transition"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-xs text-blue-700 leading-relaxed shadow-sm">
-                      <h3 className="text-blue-800 text-xs font-bold uppercase mb-2 flex items-center gap-1">
-                        <span>💡 Performance Logic Breakdown</span>
-                      </h3>
-                      <ul className="grid grid-cols-1 sm:grid-cols-2 gap-y-1 gap-x-3 text-[11px] font-medium text-blue-700">
-                        <li>• <strong className="text-blue-900 font-bold">Band 4:</strong> Outstanding (90%+)</li>
-                        <li>• <strong className="text-blue-900 font-bold">Band 3:</strong> Very Good (70-89%)</li>
-                        <li>• <strong className="text-blue-900 font-bold">Band 2:</strong> Good (50-69%)</li>
-                        <li>• <strong className="text-blue-900 font-bold">Band 1:</strong> Average (Below 50%)</li>
-                      </ul>
-                      <p className="mt-2 text-[10px] opacity-80 border-t border-blue-200/50 pt-2 leading-relaxed">
-                        System auto-recalculates parent ratings, aligns progress descriptors, and fits everything inside the print-preview dynamically.
-                      </p>
-                    </div>
+                  <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-xs text-blue-700 leading-relaxed shadow-sm mt-5">
+                    <h3 className="text-blue-800 text-xs font-bold uppercase mb-2 flex items-center gap-1">
+                      <span>💡 Performance Logic Breakdown</span>
+                    </h3>
+                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-y-1 gap-x-3 text-[11px] font-medium text-blue-700">
+                      <li>• <strong className="text-blue-900 font-bold">Band 4:</strong> Outstanding (90%+)</li>
+                      <li>• <strong className="text-blue-900 font-bold">Band 3:</strong> Very Good (70-89%)</li>
+                      <li>• <strong className="text-blue-900 font-bold">Band 2:</strong> Good (50-69%)</li>
+                      <li>• <strong className="text-blue-900 font-bold">Band 1:</strong> Average (Below 50%)</li>
+                    </ul>
+                    <p className="mt-2 text-[10px] opacity-80 border-t border-blue-200/50 pt-2 leading-relaxed">
+                      System auto-recalculates parent ratings, aligns progress descriptors, and fits everything inside the print-preview dynamically.
+                    </p>
+                  </div>
 
                     {/* Highly accessible physical Save Changes Button with reassuring sound/feedback behavior */}
                     <div className="pt-3 border-t border-slate-200">
@@ -2872,7 +2888,6 @@ export default function App() {
                     </div>
                   </div>
 
-                </div>
               ) : (
                 <div className="p-12 text-center text-slate-400">
                   <UserPlus className="h-10 w-10 mx-auto opacity-40 mb-3" />
@@ -3057,7 +3072,7 @@ export default function App() {
                         </div>
                         <div>
                           <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">Evaluation Date</p>
-                          <p className="font-mono text-slate-600 font-bold text-sm">{activeStudent.date}</p>
+                          <p className="font-mono text-slate-600 font-bold text-sm">{getTodayDateString()}</p>
                         </div>
                         <div>
                           <p className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400 font-bold">Overall Grade</p>
@@ -3075,7 +3090,7 @@ export default function App() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 border-b border-slate-200 pb-3 mt-3.5">
                     <div className="text-xs space-y-1.5 md:col-span-2">
                       <h3 className="font-bold uppercase tracking-wider text-slate-500 text-[10px]">Academic Grading Level Standards</h3>
-                      <div className="grid grid-cols-4 sm:grid-cols-8 gap-1 text-[8.5px] leading-tight">
+                      <div className="grid grid-cols-4 sm:grid-cols-7 gap-1 text-[8.5px] leading-tight">
                         <div className="bg-slate-50 p-1 rounded border border-slate-200 text-center flex flex-col justify-between h-full">
                           <strong className="text-slate-900 block font-black text-[10px]">A+</strong>
                           <span className="text-slate-500 block font-semibold font-mono text-[8.5px] leading-none my-0.5">(90%+)</span>
@@ -3108,13 +3123,8 @@ export default function App() {
                         </div>
                         <div className="bg-slate-50 p-1 rounded border border-slate-200 text-center flex flex-col justify-between h-full">
                           <strong className="text-slate-900 block font-black text-[10px]">D</strong>
-                          <span className="text-slate-500 block font-semibold font-mono text-[8.5px] leading-none my-0.5">(35-39%)</span>
-                          <span className="text-slate-400 block text-[7.5px] mt-auto">Basic</span>
-                        </div>
-                        <div className="bg-slate-50 p-1 rounded border border-slate-200 text-center flex flex-col justify-between h-full">
-                          <strong className="text-slate-900 block font-black text-[10px]">NG</strong>
-                          <span className="text-rose-500 block font-semibold font-mono text-[8.5px] leading-none my-0.5">(&lt;35%)</span>
-                          <span className="text-rose-500 block text-[7.5px] mt-auto font-bold">Ungraded</span>
+                          <span className="text-amber-600 block font-semibold font-mono text-[8.5px] leading-none my-0.5">(&lt;40%)</span>
+                          <span className="text-amber-600 block text-[7.5px] mt-auto font-bold">Needs Improvement</span>
                         </div>
                       </div>
                     </div>
@@ -3150,7 +3160,7 @@ export default function App() {
                           <th className="py-2.5 px-3 w-5/12">Grading Area Component</th>
                           <th className="py-2.5 px-2 text-center w-2/12">Rating</th>
                           <th className="py-2.5 px-2 text-center w-2/12">Evaluation</th>
-                          <th className="py-2.5 px-3 w-3/12">Educator Remarks</th>
+                          <th className="py-2.5 px-3 text-center w-3/12">Remarks</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -3199,8 +3209,8 @@ export default function App() {
                                   {activeStudent.afterSupport[key] || "Excellent"}
                                 </span>
                               </td>
-                              <td className="py-2.5 px-3 text-[10.5px] text-slate-600 leading-normal font-normal italic">
-                                <div className="line-clamp-3" title={activeStudent.remarks[key] || "No customized comments provided."}>
+                              <td className="py-2.5 px-3 text-[11px] text-slate-600 leading-normal font-normal italic text-left">
+                                <div title={activeStudent.remarks[key] || "No customized comments provided."}>
                                   {activeStudent.remarks[key] || "No customized comments provided."}
                                 </div>
                               </td>
@@ -3211,34 +3221,11 @@ export default function App() {
                     </table>
                   </div>
 
-                {/* Growth and Remarks block */}
-                <div className="grid grid-cols-2 gap-3.5 pt-1.5 border-t border-slate-200 w-full">
-                  <div className="border border-slate-200 rounded-lg p-2.5 space-y-1 bg-slate-50">
-                    <h4 className="font-bold uppercase tracking-wide text-blue-600 text-[8.5px] flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                      Student Computing Strengths
-                    </h4>
-                    <p className="text-[9.5px] text-slate-700 leading-relaxed font-normal italic line-clamp-4" title={activeStudent.strengths || "The student has demonstrated strong practical engagement during computing lab setups."}>
-                      {activeStudent.strengths || "The student has demonstrated strong practical engagement during computing lab setups."}
-                    </p>
-                  </div>
-
-                  <div className="border border-slate-200 rounded-lg p-2.5 space-y-1 bg-slate-50">
-                    <h4 className="font-bold uppercase tracking-wide text-blue-600 text-[8.5px] flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-                      Areas of Growth & Next Steps
-                    </h4>
-                    <p className="text-[9.5px] text-slate-700 leading-relaxed font-normal italic line-clamp-4" title={activeStudent.areasOfImprovement || "Regular touch typing drills and homework submission revision are recommended."}>
-                      {activeStudent.areasOfImprovement || "Regular touch typing drills and homework submission revision are recommended."}
-                    </p>
-                  </div>
-                </div>
-
                 {/* Aggregate metrics */}
-                <div className="flex flex-row justify-between items-center bg-slate-50 border border-slate-200 rounded-lg p-3 gap-2 text-xs w-full">
+                <div className="flex flex-row justify-between items-center bg-slate-50 border border-slate-200 rounded-lg p-3.5 gap-2 text-xs w-full">
                   <div>
-                    <strong className="block font-bold text-[9px] text-slate-700 uppercase tracking-wider">Overall Academic standing</strong>
-                    <span className="text-[8px] text-slate-400 font-mono">Calculated over all 5 grading weights (Passing mark: 35%)</span>
+                    <strong className="block font-bold text-[9px] text-slate-700 uppercase tracking-wider">Overall Performance</strong>
+                    <span className="text-[8px] text-slate-400 font-mono">Calculated over all 5 grading weights</span>
                   </div>
                   <div className="flex gap-3 items-center">
                     <div className="flex items-center gap-1.5 bg-slate-100 border border-slate-200 rounded px-2 py-0.5 font-mono text-slate-805 font-bold text-[9.5px]">
@@ -3246,9 +3233,9 @@ export default function App() {
                       <span className="font-extrabold">{calculateTotalScore(activeStudent.scores)}%</span>
                     </div>
                     <div className="border-l border-slate-200 pl-4 flex items-center gap-1">
-                      <span className={`w-1.5 h-1.5 rounded-full ${calculateTotalScore(activeStudent.scores) >= 35 ? "bg-emerald-500" : "bg-rose-500 animate-pulse"}`} />
-                      <strong className={`font-black text-[9px] tracking-wider uppercase ${calculateTotalScore(activeStudent.scores) >= 35 ? "text-emerald-700" : "text-rose-600"}`}>
-                        {calculateTotalScore(activeStudent.scores) >= 35 ? "PASSED ✅" : "FAILED ❌"}
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      <strong className="font-black text-[9px] tracking-wider uppercase text-emerald-700">
+                        PASSED ✅
                       </strong>
                     </div>
                   </div>
@@ -3260,22 +3247,16 @@ export default function App() {
                   <div className="grid grid-cols-2 gap-8 text-[9px] text-slate-900 pt-1">
                     <div className="space-y-1">
                       <p className="font-extrabold uppercase tracking-widest text-slate-400 text-[7.5px]">Evaluator Signature</p>
-                      <div className="border-b border-slate-300 w-full pt-1 h-3.5" />
+                      <div className="border-b border-slate-300 w-full pt-1 h-11" />
                       <p className="text-[8.5px] font-bold text-slate-900 mt-1">Mr. Sudeep Shrestha (Teacher)</p>
-                      <p className="text-[8.5px] font-bold text-slate-400">Date: <span className="font-mono text-slate-900 font-bold">{activeStudent.date}</span></p>
+                      <p className="text-[8.5px] font-bold text-slate-400">Date: <span className="font-mono text-slate-900 font-bold">{getTodayDateString()}</span></p>
                     </div>
 
                     <div className="space-y-1">
                       <p className="font-extrabold uppercase tracking-widest text-slate-400 text-[7.5px]">Parent / Guardian Signature</p>
-                      <div className="border-b border-slate-300 w-full pt-1 h-3.5" />
+                      <div className="border-b border-slate-300 w-full pt-1 h-11" />
                       <p className="text-[8.5px] font-bold text-slate-500 pt-2.5">Date Checked: __________________</p>
                     </div>
-                  </div>
-
-                  {/* PDF Tiny Footer bar */}
-                  <div className="pt-1.5 border-t border-slate-100 flex justify-between items-center text-[7.5px] text-slate-400 font-mono">
-                    <span>PRINT PROTOCOL OVERVIEW: HIGH-FIDELITY A4 STATIC CACHE</span>
-                    <span>Page 1 of 1</span>
                   </div>
                 </div>
 
