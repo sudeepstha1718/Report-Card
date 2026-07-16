@@ -90,65 +90,65 @@ export function getRemarkByComponentAndRating(key: ComponentKey, rating: number)
   if (key === "participation") {
     switch (rIdx) {
       case 4:
-        return "Actively participates, remains attentive, follows instructions, and contributes positively to class discussions.";
+        return "Active, attentive, and participates eagerly in class.";
       case 3:
-        return "Participates regularly, usually remains attentive, and follows instructions with occasional reminders.";
+        return "Attentive and participates regularly in activities.";
       case 2:
-        return "Participates occasionally but requires reminders to stay attentive and engaged during lessons.";
+        return "Participates occasionally but needs to stay focused.";
       case 1:
-        return "Frequently lacks attention, rarely participates, and requires continuous encouragement to follow classroom expectations.";
+        return "Needs constant reminders to pay attention and engage.";
     }
   }
 
   if (key === "homework") {
     switch (rIdx) {
       case 4:
-        return "Consistently completes homework on time with excellent effort and works independently.";
+        return "Consistently completes homework on time with high-quality work.";
       case 3:
-        return "Usually completes homework on time and demonstrates good responsibility.";
+        return "Regularly submits neat homework assignments on time.";
       case 2:
-        return "Completes homework inconsistently and requires encouragement to complete tasks independently.";
+        return "Completes homework inconsistently and needs reminders.";
       case 1:
-        return "Rarely completes homework and shows limited responsibility toward assigned work.";
+        return "Rarely completes homework and needs close supervision.";
     }
   }
 
   if (key === "mcq") {
     switch (rIdx) {
       case 4:
-        return "Demonstrates an excellent understanding of computer concepts and consistently performs well in assessments.";
+        return "Excellent understanding of computer concepts and test materials.";
       case 3:
-        return "Demonstrates a good understanding of computer concepts and performs well in most assessments.";
+        return "Good understanding of core theoretical computer concepts.";
       case 2:
-        return "Demonstrates a basic understanding of computer concepts but requires additional practice and guidance.";
+        return "Has basic understanding but needs more conceptual practice.";
       case 1:
-        return "Has difficulty understanding computer concepts and requires significant support to improve performance in assessments.";
+        return "Struggles with concepts and needs significant revision support.";
     }
   }
 
   if (key === "project") {
     switch (rIdx) {
       case 4:
-        return "Completes assigned projects accurately, independently, and with excellent quality.";
+        return "Creates beautiful, well-structured digital projects independently.";
       case 3:
-        return "Completes assigned projects successfully with good quality and applies learned skills with minimal guidance.";
+        return "Completes creative computer projects with good designs.";
       case 2:
-        return "Completes assigned projects with support and is gradually developing confidence in applying learned skills.";
+        return "Requires guided assistance to complete creative projects.";
       case 1:
-        return "Experiences difficulty completing assigned projects and requires continuous guidance and encouragement.";
+        return "Struggles with projects and needs step-by-step guidance.";
     }
   }
 
   if (key === "lab") {
     switch (rIdx) {
       case 4:
-        return "Follows lab instructions carefully, uses computer resources responsibly, and completes practical activities independently and accurately.";
+        return "Excellent hands-on skills and works independently in the lab.";
       case 3:
-        return "Usually follows lab instructions, uses computer resources appropriately, and completes practical activities with minimal assistance.";
+        return "Follows lab instructions well and completes hands-on tasks.";
       case 2:
-        return "Follows lab instructions inconsistently and requires guidance to complete practical activities successfully.";
+        return "Requires assistance to complete practical lab assignments.";
       case 1:
-        return "Frequently fails to follow lab instructions, struggles to complete practical activities, and requires continuous supervision and support.";
+        return "Needs constant supervision and support during lab tasks.";
     }
   }
 
@@ -196,10 +196,72 @@ export function joinWithAnd(items: string[]): string {
   return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
 }
 
+export interface StudentPronouns {
+  subject: string;       // "He" / "She"
+  subjectLower: string;  // "he" / "she"
+  object: string;        // "him" / "her"
+  possessive: string;    // "his" / "her"
+  possessiveAdj: string; // "his" / "her"
+}
+
+/**
+ * Custom-crafted pronoun detector for the Class 3 students list.
+ * Accurate for all 53 names, with clean rules for any custom-entered student name.
+ */
+export function getStudentPronouns(name: string): StudentPronouns {
+  const normalized = (name || "").trim().toLowerCase();
+  
+  const femaleKeywords = [
+    "aarubi", "anusuruya", "dipshikha", "jenisha", "kenzina", "pallavi", "prinsa", "shaira", "subina", "syaron", "tanauja",
+    "ami", "anjila", "arika", "ashariya", "diya", "grace", "monali", "nancy", "prasansha", "rashika", "sahisa", "samriddri", "sanvi", "saraswoti"
+  ];
+  
+  const maleKeywords = [
+    "aabish", "aron", "anon", "anubhav", "nijon", "rainer", "rihan", "rushank", "sahil", "saimon", "samrit", "seejan", "sohan", "yobin", "yogesh",
+    "ankit", "arpan", "krishal", "nipshan", "prabhash", "riyans", "roman", "royal", "sparsh", "sushant", "swapnil", "unique"
+  ];
+
+  const firstWord = normalized.split(/\s+/)[0];
+  
+  let isFemale = false;
+  if (femaleKeywords.some(f => firstWord.includes(f) || normalized.includes(f))) {
+    isFemale = true;
+  } else if (maleKeywords.some(m => firstWord.includes(m) || normalized.includes(m))) {
+    isFemale = false;
+  } else {
+    // Elegant fallback for custom names
+    const endsWithA = firstWord.endsWith("a") && !firstWord.endsWith("indra") && !firstWord.endsWith("endra") && !firstWord.endsWith("shra");
+    const endsWithI = firstWord.endsWith("i") || firstWord.endsWith("y");
+    if (endsWithA || endsWithI || firstWord.endsWith("ee") || firstWord.endsWith("sha") || firstWord.endsWith("ya") || normalized.includes("kumari") || normalized.includes("devi")) {
+      isFemale = true;
+    } else {
+      isFemale = false; // default to he
+    }
+  }
+
+  if (isFemale) {
+    return {
+      subject: "She",
+      subjectLower: "she",
+      object: "her",
+      possessive: "her",
+      possessiveAdj: "her"
+    };
+  } else {
+    return {
+      subject: "He",
+      subjectLower: "he",
+      object: "him",
+      possessive: "his",
+      possessiveAdj: "his"
+    };
+  }
+}
+
 /**
  * Dynamically generates personalized, understandable strengths and areas of improvement based on raw scores.
  */
-export function generateDefaultStrengthsAndImprovements(components: StudentRecord["scores"]): {
+export function generateDefaultStrengthsAndImprovements(components: StudentRecord["scores"], studentName?: string): {
   strengths: string;
   areasOfImprovement: string;
 } {
@@ -224,7 +286,7 @@ export function generateDefaultStrengthsAndImprovements(components: StudentRecor
   const rating2 = evaluated.filter(item => item.rating === 2).map(item => item.key);
   const rating1 = evaluated.filter(item => item.rating === 1).map(item => item.key);
 
-  const maxRating = Math.max(...evaluated.map(item => item.rating)) as 1 | 2 | 3 | 4;
+  const pron = getStudentPronouns(studentName || "");
 
   let strengths = "";
   let areasOfImprovement = "";
@@ -232,72 +294,67 @@ export function generateDefaultStrengthsAndImprovements(components: StudentRecor
   // Helper dictionary of standard qualities to keep phrases varied and naturally readable
   const strengthDict: Record<ComponentKey, { phrase4: string; phrase3: string; noun: string }> = {
     participation: {
-      phrase4: "remains exceptionally attentive and actively participates in classroom discussions",
-      phrase3: "shares ideas regularly and remains attentive during lessons",
-      noun: "classroom attentiveness"
+      phrase4: "is highly attentive and participates eagerly in class",
+      phrase3: "is attentive and participates regularly",
+      noun: "class participation"
     },
     homework: {
-      phrase4: "consistently completes independent homework with outstanding effort",
-      phrase3: "usually completes homework tasks on time and works responsibly",
-      noun: "responsibility in homework tasks"
+      phrase4: "consistently submits outstanding homework assignments",
+      phrase3: "completes homework on time with good effort",
+      noun: "homework responsibility"
     },
     mcq: {
-      phrase4: "demonstrates an excellent understanding of theoretical computer concepts",
-      phrase3: "shows a solid understanding of fundamental computer concepts",
-      noun: "knowledge of computer concepts"
+      phrase4: "demonstrates excellent concept understanding",
+      phrase3: "shows sound understanding of computer topics",
+      noun: "concept comprehension"
     },
     project: {
-      phrase4: "produces high-quality, creative computer projects independently",
-      phrase3: "completes assigned computer projects successfully with good quality",
+      phrase4: "creates neat, highly creative computer projects",
+      phrase3: "completes assigned computer projects successfully",
       noun: "creative projects"
     },
     lab: {
-      phrase4: "follows practical lab instructions perfectly and uses resources responsibly",
-      phrase3: "usually follows practical lab instructions and uses computer tools well",
-      noun: "practical lab performance"
+      phrase4: "has excellent lab focus and practical computer skills",
+      phrase3: "usually completes practical computer lab work well",
+      noun: "practical lab skills"
     }
   };
 
   const improvementDict: Record<ComponentKey, { phrase2: string; phrase1: string; noun: string }> = {
     participation: {
-      phrase2: "improve attentiveness and stay more focused during lessons",
-      phrase1: "strive to participate more actively and follow classroom expectations",
-      noun: "classroom participation"
+      phrase2: "focus more on classroom lessons",
+      phrase1: "strive to pay attention in class",
+      noun: "class focus"
     },
     homework: {
-      phrase2: "complete homework assignments more consistently with independent effort",
-      phrase1: "regularly complete assigned work and build basic responsibility",
+      phrase2: "submit homework tasks regularly",
+      phrase1: "complete assigned homework tasks",
       noun: "homework completion"
     },
     mcq: {
-      phrase2: "spend extra time reviewing lesson notes to build stronger concept understanding",
-      phrase1: "focus on learning basic computer concepts with steady guidance",
-      noun: "computer concept comprehension"
+      phrase2: "spend time revising computer topics",
+      phrase1: "learn basic computer concepts",
+      noun: "concept revision"
     },
     project: {
-      phrase2: "develop confidence when applying practical skills in computer projects",
-      phrase1: "work on completing assigned projects with consistent help",
+      phrase2: "build confidence in creative work",
+      phrase1: "complete computer projects",
       noun: "project work"
     },
     lab: {
-      phrase2: "follow lab instructions more consistently to complete activities successfully",
-      phrase1: "listen carefully to instructions and follow lab expectations during practical tasks",
-      noun: "practical lab skills"
+      phrase2: "follow practical lab steps carefully",
+      phrase1: "practice practical lab skills",
+      noun: "lab tasks"
     }
   };
 
   // --- STRENGTHS GENERATION ---
   if (rating4.length === 5) {
-    strengths = "Consistently demonstrates excellent participation, responsibility, understanding of computer concepts, and practical skills across all learning activities.";
+    strengths = `Consistently demonstrates excellent understanding, participation, and hands-on computer skills.`;
   } else if (rating3.length === 5) {
-    strengths = "Demonstrates good classroom participation, completes assigned work responsibly, and shows a sound understanding of computer concepts.";
+    strengths = `Demonstrates good class participation, reliable homework completion, and sound concept understanding.`;
   } else if (rating1.length + rating2.length === 5) {
-    // If all are low (1s and 2s)
-    if (rating2.length > 0) {
-      strengths = "Shows a basic understanding of computer concepts and demonstrates the potential to improve with continued effort.";
-    } else {
-      strengths = "Approaches learning activities with a cooperative attitude and shows receptiveness to support and encouragement.";
-    }
+    strengths = `Shows positive efforts in learning and is eager to follow simple teacher instructions.`;
   } else {
     // Standard mix
     if (rating4.length > 0) {
@@ -305,7 +362,7 @@ export function generateDefaultStrengthsAndImprovements(components: StudentRecor
         const k = rating4[0];
         const rest3Nouns = rating3.map(tk => strengthDict[tk].noun);
         if (rest3Nouns.length > 0) {
-          strengths = `Exhibits excellent performance as they ${strengthDict[k].phrase4}, while showing nice capability in ${joinWithAnd(rest3Nouns)}.`;
+          strengths = `Exhibits excellent performance as ${pron.subjectLower} ${strengthDict[k].phrase4}, with good skills in ${joinWithAnd(rest3Nouns)}.`;
         } else {
           strengths = `Consistently ${strengthDict[k].phrase4} and approaches all learning tasks with great interest.`;
         }
@@ -314,9 +371,9 @@ export function generateDefaultStrengthsAndImprovements(components: StudentRecor
         const k2 = rating4[1];
         const rest3Nouns = rating3.map(tk => strengthDict[tk].noun);
         if (rest3Nouns.length > 0) {
-          strengths = `Demonstrates excellent skills as they ${strengthDict[k1].phrase4} and ${strengthDict[k2].phrase4}, alongside good ${joinWithAnd(rest3Nouns)}.`;
+          strengths = `Demonstrates excellent skills as ${pron.subjectLower} ${strengthDict[k1].phrase4} and ${strengthDict[k2].phrase4}, alongside good ${joinWithAnd(rest3Nouns)}.`;
         } else {
-          strengths = `Distinguishes themselves as they ${strengthDict[k1].phrase4} and ${strengthDict[k2].phrase4}.`;
+          strengths = `Distinguishes ${pron.object}self as ${pron.subjectLower} ${strengthDict[k1].phrase4} and ${strengthDict[k2].phrase4}.`;
         }
       } else {
         const nouns4 = rating4.map(tk => strengthDict[tk].noun);
@@ -329,37 +386,37 @@ export function generateDefaultStrengthsAndImprovements(components: StudentRecor
       }
     } else if (rating3.length > 0) {
       const nouns3 = rating3.map(tk => strengthDict[tk].noun);
-      strengths = `Demonstrates good progress in ${joinWithAnd(nouns3)} and approaches computer studies with a positive learning attitude.`;
+      strengths = `Demonstrates good progress in ${joinWithAnd(nouns3)} with a positive learning attitude.`;
     } else {
-      strengths = "Shows general willingness to learn and friendly cooperation during group tasks.";
+      strengths = `Shows general willingness to learn and cooperates nicely during tasks.`;
     }
   }
 
   // --- AREAS FOR IMPROVEMENT GENERATION ---
   if (rating3.length + rating4.length === 5) {
     if (rating4.length === 5) {
-      areasOfImprovement = "Continue maintaining this excellent performance while exploring opportunities to further develop creativity and independent learning.";
+      areasOfImprovement = `Continue maintaining this excellent performance while exploring more advanced topics.`;
     } else {
       const keyPr = rating3[0] || rating4[0];
       if (keyPr === "participation") {
-        areasOfImprovement = "Are encouraged to share ideas more frequently during lessons to further build confidence in public class discussions.";
+        areasOfImprovement = `Is encouraged to participate more actively to further build confidence in class.`;
       } else if (keyPr === "homework") {
-        areasOfImprovement = "Is encouraged to maintain high level of independent research when completing homework tasks.";
+        areasOfImprovement = `Is encouraged to maintain high consistency when completing homework tasks.`;
       } else if (keyPr === "mcq") {
-        areasOfImprovement = "Can continue exploring advanced computer hardware and software theory to further deepen their clear knowledge.";
+        areasOfImprovement = `Can review lesson topics regularly to continue extending conceptual knowledge.`;
       } else if (keyPr === "project") {
-        areasOfImprovement = "Is encouraged to apply highly creative designs and advanced structures in future practical assignments.";
+        areasOfImprovement = `Is encouraged to apply creative ideas in future practical projects.`;
       } else {
-        areasOfImprovement = "Can focus on completing practical lab challenges entirely independently to further enhance computer confidence.";
+        areasOfImprovement = `Can focus on completing practical exercises independently in the lab.`;
       }
     }
   } else if (rating1.length + rating2.length === 5) {
-    areasOfImprovement = "Should participate more actively, complete assigned work consistently, and follow lab instructions carefully to strengthen overall performance.";
+    areasOfImprovement = `Should focus on completing homework consistently and following simple lab rules.`;
   } else {
     if (rating1.length > 0) {
       const p1 = rating1.map(tk => improvementDict[tk].phrase1);
       if (rating1.length === 1) {
-        areasOfImprovement = `To build stronger progress, they should ${p1[0]} and seek support when facing task difficulties.`;
+        areasOfImprovement = `To build stronger progress, ${pron.subjectLower} should work to ${p1[0]} with steady effort.`;
       } else {
         const combinedP1 = rating1.map(tk => improvementDict[tk].noun);
         areasOfImprovement = `Requires focused effort and continuous support to improve in ${joinWithAnd(combinedP1)} fields.`;
@@ -369,9 +426,9 @@ export function generateDefaultStrengthsAndImprovements(components: StudentRecor
       if (rating2.length === 1) {
         const k = rating2[0];
         if (k === "lab") {
-          areasOfImprovement = "Should improve attentiveness and follow lab instructions more consistently to perform practical activities with greater confidence.";
+          areasOfImprovement = `Should follow lab instructions more consistently to perform practical activities with confidence.`;
         } else {
-          areasOfImprovement = `To secure better learning outcomes, they should work to ${p2[0]}.`;
+          areasOfImprovement = `To secure better learning outcomes, ${pron.subjectLower} should work to ${p2[0]}.`;
         }
       } else if (rating2.length === 2) {
         areasOfImprovement = `Would benefit from extra focus to ${p2[0]} and ${p2[1]} with more consistency.`;

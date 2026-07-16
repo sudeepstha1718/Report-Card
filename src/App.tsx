@@ -669,7 +669,7 @@ export default function App() {
         const nextRatingDesc = ratingToDescriptor(nextRating);
         const nextAfterSupport = { ...s.afterSupport, [key]: nextRatingDesc };
         // Auto update student general strengths and improvements in real-time
-        const autoFeedback = generateDefaultStrengthsAndImprovements(nextScores);
+        const autoFeedback = generateDefaultStrengthsAndImprovements(nextScores, s.name);
 
         return {
           ...s,
@@ -784,7 +784,7 @@ export default function App() {
           const nextRating = percentageToRating(nextPct);
           const nextRatingDesc = ratingToDescriptor(nextRating);
           const nextAfterSupport = { ...s.afterSupport, [key]: nextRatingDesc };
-          const autoFeedback = generateDefaultStrengthsAndImprovements(nextScores);
+          const autoFeedback = generateDefaultStrengthsAndImprovements(nextScores, s.name);
 
           return {
             ...s,
@@ -835,8 +835,8 @@ export default function App() {
         lab: "Excellent"
       },
       remarks: generateDefaultRemarks(standardScores),
-      strengths: generateDefaultStrengthsAndImprovements(standardScores).strengths,
-      areasOfImprovement: generateDefaultStrengthsAndImprovements(standardScores).areasOfImprovement
+      strengths: generateDefaultStrengthsAndImprovements(standardScores, newStudentName).strengths,
+      areasOfImprovement: generateDefaultStrengthsAndImprovements(standardScores, newStudentName).areasOfImprovement
     };
 
     const newList = [...students, newRec];
@@ -1061,7 +1061,7 @@ export default function App() {
 
             // Also regenerate remarks and feedback based on the new scores so everything remains in sync
             s.remarks = generateDefaultRemarks(s.scores);
-            const feedback = generateDefaultStrengthsAndImprovements(s.scores);
+            const feedback = generateDefaultStrengthsAndImprovements(s.scores, s.name);
             s.strengths = feedback.strengths;
             s.areasOfImprovement = feedback.areasOfImprovement;
 

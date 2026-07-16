@@ -544,7 +544,7 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
                       </span>
                     </td>
                     <td className={`${rowPaddingY} px-3 text-[9.5px] text-slate-650 leading-normal font-normal italic`}>
-                      <div className="line-clamp-3" title={student.remarks[key] || "No custom remarks shared."}>
+                      <div title={student.remarks[key] || "No custom remarks shared."}>
                         {student.remarks[key] || "No custom remarks shared."}
                       </div>
                     </td>
@@ -562,7 +562,7 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
               Student Computing Strengths
             </h4>
-            <p className="text-[9.5px] text-slate-700 leading-relaxed font-normal italic line-clamp-3" title={student.strengths || "The student has demonstrated strong practical engagement during computing lab setups."}>
+            <p className="text-[9.5px] text-slate-700 leading-relaxed font-normal italic" title={student.strengths || "The student has demonstrated strong practical engagement during computing lab setups."}>
               {student.strengths || "The student has demonstrated strong practical engagement during computing lab setups."}
             </p>
           </div>
@@ -572,7 +572,7 @@ export const PrintPreviewPage: React.FC<PrintPreviewPageProps> = ({
               <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
               Areas of Growth & Next Steps
             </h4>
-            <p className="text-[9.5px] text-slate-700 leading-relaxed font-normal italic line-clamp-3" title={student.areasOfImprovement || "Regular touch typing drills and homework submission revision are recommended."}>
+            <p className="text-[9.5px] text-slate-700 leading-relaxed font-normal italic" title={student.areasOfImprovement || "Regular touch typing drills and homework submission revision are recommended."}>
               {student.areasOfImprovement || "Regular touch typing drills and homework submission revision are recommended."}
             </p>
           </div>
